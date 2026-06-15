@@ -91,6 +91,18 @@ Documents/        # 项目文档
 
 ## 快速开始
 
+### 启动基础设施
+
+```bash
+# 一键启动所有基础设施（PostgreSQL、Redis、Kafka、MinIO）
+make -C infrastructure/docker up
+
+# 查看运行状态
+make -C infrastructure/docker status
+```
+
+
+
 ### 前置条件
 
 - Go >= 1.24
