@@ -225,7 +225,7 @@ services:
       mc mb -p quantlab/portfolio;
       mc mb -p quantlab/backtest;
       mc mb -p quantlab/community;
-      mc mb -p quantlab/ai;
+      mc mb -p quantlab/ai-assets;
       mc anonymous set download quantlab/user;
       echo 'MinIO buckets initialized';
       "
