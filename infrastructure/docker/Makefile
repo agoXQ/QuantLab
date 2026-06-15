@@ -34,11 +34,11 @@ redis-cli:
 
 # 查看 Kafka 主题列表
 kafka-topics:
-	docker exec -it quantlab-kafka kafka-topics.sh --bootstrap-server localhost:9092 --list
+	docker exec -it quantlab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list
 
 # 创建 Kafka 主题（如：make create-topic topic=user-events partitions=3）
 create-topic:
-	docker exec quantlab-kafka kafka-topics.sh --bootstrap-server localhost:9092 \
+	docker exec quantlab-kafka /opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 \
 		--create --topic $(topic) --partitions $(partitions) --replication-factor 1
 
 # 查看 MinIO 控制台地址

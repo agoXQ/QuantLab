@@ -6,7 +6,6 @@
 # 参考：Documents/Standard/QuantLab Database Design Standard v1.0.md
 # ============================================================
 
-version: "3.9"
 
 networks:
   quantlab-net:
@@ -44,7 +43,7 @@ services:
       TIMESCALEDB_TELEMETRY: off
     volumes:
       - postgresql-data:/var/lib/postgresql/data
-      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-quantlab}"]
       interval: 10s
@@ -132,7 +131,7 @@ services:
     volumes:
       - kafka-data:/var/lib/kafka/data
     healthcheck:
-      test: ["CMD-SHELL", "kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list || exit 1"]
       interval: 15s
       timeout: 10s
       retries: 5
