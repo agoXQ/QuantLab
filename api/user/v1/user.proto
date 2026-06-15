@@ -1,0 +1,116 @@
+syntax = "proto3";
+
+package user;
+
+option go_package = "github.com/agoXQ/QuantLab/app/user/pb";
+
+import "api/common/v1/common.proto";
+
+service UserService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  rpc Login(LoginRequest) returns (LoginResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+  rpc UpdateProfile(UpdateProfileRequest) returns (UpdateProfileResponse);
+  rpc Follow(FollowRequest) returns (FollowResponse);
+  rpc Unfollow(UnfollowRequest) returns (UnfollowResponse);
+  rpc GetFollowers(GetFollowersRequest) returns (GetFollowersResponse);
+  rpc GetFollowing(GetFollowingRequest) returns (GetFollowingResponse);
+}
+
+message RegisterRequest {
+  string username = 1;
+  string email = 2;
+  string password = 3;
+}
+
+message RegisterResponse {
+  int64 user_id = 1;
+}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  int64 user_id = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+}
+
+message User {
+  int64 id = 1;
+  string username = 2;
+  string email = 3;
+  string avatar = 4;
+  string bio = 5;
+  int32 status = 6;
+  int32 creator_status = 7;
+  int32 verified_status = 8;
+  string membership_tier = 9;
+  int64 created_at = 10;
+}
+
+message GetUserRequest {
+  int64 user_id = 1;
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message GetProfileRequest {
+  int64 user_id = 1;
+}
+
+message GetProfileResponse {
+  User user = 1;
+  int64 follower_count = 2;
+  int64 following_count = 3;
+  int64 strategy_count = 4;
+  int64 backtest_count = 5;
+}
+
+message UpdateProfileRequest {
+  string nickname = 1;
+  string avatar = 2;
+  string bio = 3;
+  string location = 4;
+}
+
+message UpdateProfileResponse {}
+
+message FollowRequest {
+  int64 followee_id = 1;
+}
+
+message FollowResponse {}
+
+message UnfollowRequest {
+  int64 followee_id = 1;
+}
+
+message UnfollowResponse {}
+
+message GetFollowersRequest {
+  int64 user_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+
+message GetFollowersResponse {
+  repeated User followers = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetFollowingRequest {
+  int64 user_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+
+message GetFollowingResponse {
+  repeated User following = 1;
+  common.Cursor cursor = 2;
+}

@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package notification;
+
+option go_package = "github.com/agoXQ/QuantLab/app/notification/pb";
+
+import "api/common/v1/common.proto";
+
+service NotificationService {
+  rpc ListNotifications(ListNotificationsRequest) returns (ListNotificationsResponse);
+  rpc GetUnreadCount(GetUnreadCountRequest) returns (GetUnreadCountResponse);
+  rpc MarkRead(MarkReadRequest) returns (MarkReadResponse);
+  rpc MarkAllRead(MarkAllReadRequest) returns (MarkAllReadResponse);
+  rpc DeleteNotification(DeleteNotificationRequest) returns (DeleteNotificationResponse);
+  rpc GetPreferences(GetPreferencesRequest) returns (GetPreferencesResponse);
+  rpc UpdatePreferences(UpdatePreferencesRequest) returns (UpdatePreferencesResponse);
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse);
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (CancelSubscriptionResponse);
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+}
+
+enum NotificationType {
+  NOTIFICATION_TYPE_UNSPECIFIED = 0;
+  SYSTEM = 1;
+  COMMENT = 2;
+  LIKE = 3;
+  FOLLOW = 4;
+  MENTION = 5;
+  RANKING = 6;
+  STRATEGY = 7;
+  PORTFOLIO = 8;
+  BACKTEST = 9;
+  MEMBERSHIP = 10;
+}
+
+message Notification {
+  int64 id = 1;
+  int64 user_id = 2;
+  NotificationType type = 3;
+  string title = 4;
+  string content = 5;
+  string status = 6;
+  int64 read_at = 7;
+  int64 created_at = 8;
+}
+
+message NotificationPreference {
+  int64 user_id = 1;
+  bool in_app_enabled = 2;
+  bool email_enabled = 3;
+  bool webhook_enabled = 4;
+  bool push_enabled = 5;
+}
+
+message NotificationSubscription {
+  int64 id = 1;
+  int64 subscriber_id = 2;
+  string object_type = 3;
+  int64 object_id = 4;
+  int64 created_at = 5;
+}
+
+message ListNotificationsRequest {
+  common.Cursor cursor = 1;
+  int32 limit = 2;
+}
+message ListNotificationsResponse {
+  repeated Notification notifications = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetUnreadCountRequest {}
+message GetUnreadCountResponse { int32 count = 1; }
+
+message MarkReadRequest { int64 notification_id = 1; }
+message MarkReadResponse {}
+
+message MarkAllReadRequest {}
+message MarkAllReadResponse {}
+
+message DeleteNotificationRequest { int64 notification_id = 1; }
+message DeleteNotificationResponse {}
+
+message GetPreferencesRequest {}
+message GetPreferencesResponse { NotificationPreference preferences = 1; }
+
+message UpdatePreferencesRequest {
+  bool in_app_enabled = 1;
+  bool email_enabled = 2;
+  bool webhook_enabled = 3;
+  bool push_enabled = 4;
+}
+message UpdatePreferencesResponse {}
+
+message CreateSubscriptionRequest {
+  string object_type = 1;
+  int64 object_id = 2;
+}
+message CreateSubscriptionResponse { int64 subscription_id = 1; }
+
+message CancelSubscriptionRequest { int64 subscription_id = 1; }
+message CancelSubscriptionResponse {}
+
+message ListSubscriptionsRequest {
+  common.Cursor cursor = 1;
+  int32 limit = 2;
+}
+message ListSubscriptionsResponse {
+  repeated NotificationSubscription subscriptions = 1;
+  common.Cursor cursor = 2;
+}

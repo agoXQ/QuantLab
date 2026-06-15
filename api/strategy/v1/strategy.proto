@@ -1,0 +1,132 @@
+syntax = "proto3";
+
+package strategy;
+
+option go_package = "github.com/agoXQ/QuantLab/app/strategy/pb";
+
+import "api/common/v1/common.proto";
+
+service StrategyService {
+  rpc CreateStrategy(CreateStrategyRequest) returns (CreateStrategyResponse);
+  rpc GetStrategy(GetStrategyRequest) returns (GetStrategyResponse);
+  rpc UpdateStrategy(UpdateStrategyRequest) returns (UpdateStrategyResponse);
+  rpc DeleteStrategy(DeleteStrategyRequest) returns (DeleteStrategyResponse);
+  rpc PublishStrategy(PublishStrategyRequest) returns (PublishStrategyResponse);
+  rpc ArchiveStrategy(ArchiveStrategyRequest) returns (ArchiveStrategyResponse);
+  rpc ForkStrategy(ForkStrategyRequest) returns (ForkStrategyResponse);
+  rpc CreateVersion(CreateVersionRequest) returns (CreateVersionResponse);
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  rpc GetVersion(GetVersionRequest) returns (GetVersionResponse);
+  rpc SearchStrategies(SearchStrategiesRequest) returns (SearchStrategiesResponse);
+  rpc ListStrategies(ListStrategiesRequest) returns (ListStrategiesResponse);
+}
+
+message Strategy {
+  int64 id = 1;
+  int64 author_id = 2;
+  string title = 3;
+  string description = 4;
+  common.Status status = 5;
+  common.Visibility visibility = 6;
+  string category = 7;
+  repeated string tags = 8;
+  int64 current_version_id = 9;
+  int64 view_count = 10;
+  int64 favorite_count = 11;
+  int64 fork_count = 12;
+  int64 created_at = 13;
+  int64 updated_at = 14;
+}
+
+message StrategyVersion {
+  int64 id = 1;
+  int64 strategy_id = 2;
+  string version_no = 3;
+  string formula_text = 4;
+  string buy_rule = 5;
+  string sell_rule = 6;
+  string risk_rule = 7;
+  string position_rule = 8;
+  string rebalance_rule = 9;
+  string change_log = 10;
+  int64 created_by = 11;
+  int64 created_at = 12;
+}
+
+message CreateStrategyRequest {
+  string title = 1;
+  string description = 2;
+  string category = 3;
+  repeated string tags = 4;
+}
+message CreateStrategyResponse { int64 strategy_id = 1; }
+
+message GetStrategyRequest { int64 strategy_id = 1; }
+message GetStrategyResponse { Strategy strategy = 1; }
+
+message UpdateStrategyRequest {
+  int64 strategy_id = 1;
+  string title = 2;
+  string description = 3;
+  string category = 4;
+  repeated string tags = 5;
+}
+message UpdateStrategyResponse {}
+
+message DeleteStrategyRequest { int64 strategy_id = 1; }
+message DeleteStrategyResponse {}
+
+message PublishStrategyRequest {
+  int64 strategy_id = 1;
+  int64 version_id = 2;
+}
+message PublishStrategyResponse {}
+
+message ArchiveStrategyRequest { int64 strategy_id = 1; }
+message ArchiveStrategyResponse {}
+
+message ForkStrategyRequest { int64 source_strategy_id = 1; }
+message ForkStrategyResponse { int64 new_strategy_id = 1; }
+
+message CreateVersionRequest {
+  int64 strategy_id = 1;
+  string formula_text = 2;
+  string buy_rule = 3;
+  string sell_rule = 4;
+  string risk_rule = 5;
+  string position_rule = 6;
+  string rebalance_rule = 7;
+  string change_log = 8;
+}
+message CreateVersionResponse { int64 version_id = 1; }
+
+message ListVersionsRequest { int64 strategy_id = 1; }
+message ListVersionsResponse { repeated StrategyVersion versions = 1; }
+
+message GetVersionRequest { int64 version_id = 1; }
+message GetVersionResponse { StrategyVersion version = 1; }
+
+message SearchStrategiesRequest {
+  string keyword = 1;
+  repeated string tags = 2;
+  int64 author_id = 3;
+  string category = 4;
+  string sort = 5;
+  common.Cursor cursor = 6;
+  int32 limit = 7;
+}
+message SearchStrategiesResponse {
+  repeated Strategy strategies = 1;
+  common.Cursor cursor = 2;
+}
+
+message ListStrategiesRequest {
+  int64 author_id = 1;
+  common.Status status = 2;
+  common.Cursor cursor = 3;
+  int32 limit = 4;
+}
+message ListStrategiesResponse {
+  repeated Strategy strategies = 1;
+  common.Cursor cursor = 2;
+}

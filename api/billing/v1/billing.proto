@@ -1,0 +1,164 @@
+syntax = "proto3";
+
+package billing;
+
+option go_package = "github.com/agoXQ/QuantLab/app/billing/pb";
+
+import "api/common/v1/common.proto";
+
+service BillingService {
+  rpc GetMembership(GetMembershipRequest) returns (GetMembershipResponse);
+  rpc PurchaseMembership(PurchaseMembershipRequest) returns (PurchaseMembershipResponse);
+  rpc CancelMembership(CancelMembershipRequest) returns (CancelMembershipResponse);
+  rpc CreateSubscription(CreateSubscriptionRequest) returns (CreateSubscriptionResponse);
+  rpc CancelSubscription(CancelSubscriptionRequest) returns (CancelSubscriptionResponse);
+  rpc ListSubscriptions(ListSubscriptionsRequest) returns (ListSubscriptionsResponse);
+  rpc CreateOrder(CreateOrderRequest) returns (CreateOrderResponse);
+  rpc GetOrder(GetOrderRequest) returns (GetOrderResponse);
+  rpc ListOrders(ListOrdersRequest) returns (ListOrdersResponse);
+  rpc CreatePayment(CreatePaymentRequest) returns (CreatePaymentResponse);
+  rpc PaymentWebhook(PaymentWebhookRequest) returns (PaymentWebhookResponse);
+  rpc GetCreatorRevenue(GetCreatorRevenueRequest) returns (GetCreatorRevenueResponse);
+  rpc RequestSettlement(RequestSettlementRequest) returns (RequestSettlementResponse);
+  rpc ListSettlements(ListSettlementsRequest) returns (ListSettlementsResponse);
+}
+
+message Membership {
+  string membership_id = 1;
+  int64 user_id = 2;
+  string tier = 3;
+  string status = 4;
+  bool auto_renew = 5;
+  int64 started_at = 6;
+  int64 expired_at = 7;
+}
+
+message Subscription {
+  string subscription_id = 1;
+  int64 subscriber_id = 2;
+  string resource_type = 3;
+  string resource_id = 4;
+  string status = 5;
+  bool auto_renew = 6;
+  int64 started_at = 7;
+  int64 expired_at = 8;
+}
+
+message Order {
+  string order_id = 1;
+  int64 user_id = 2;
+  string order_type = 3;
+  double amount = 4;
+  string currency = 5;
+  string status = 6;
+  int64 created_at = 7;
+  int64 paid_at = 8;
+}
+
+message Revenue {
+  string revenue_share_id = 1;
+  string order_id = 2;
+  int64 creator_id = 3;
+  double gross_amount = 4;
+  double platform_amount = 5;
+  double creator_amount = 6;
+  string status = 7;
+}
+
+message Settlement {
+  string settlement_id = 1;
+  int64 creator_id = 2;
+  double amount = 3;
+  string currency = 4;
+  string status = 5;
+  int64 requested_at = 6;
+  int64 paid_at = 7;
+}
+
+message GetMembershipRequest { int64 user_id = 1; }
+message GetMembershipResponse { Membership membership = 1; }
+
+message PurchaseMembershipRequest {
+  string tier = 1;
+  string billing_cycle = 2;
+}
+message PurchaseMembershipResponse { string order_id = 1; }
+
+message CancelMembershipRequest {}
+message CancelMembershipResponse {}
+
+message CreateSubscriptionRequest {
+  string resource_type = 1;
+  string resource_id = 2;
+}
+message CreateSubscriptionResponse { string subscription_id = 1; }
+
+message CancelSubscriptionRequest { string subscription_id = 1; }
+message CancelSubscriptionResponse {}
+
+message ListSubscriptionsRequest {
+  int64 user_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+message ListSubscriptionsResponse {
+  repeated Subscription subscriptions = 1;
+  common.Cursor cursor = 2;
+}
+
+message CreateOrderRequest {
+  string order_type = 1;
+  string resource_id = 2;
+  double amount = 3;
+  string currency = 4;
+}
+message CreateOrderResponse { string order_id = 1; }
+
+message GetOrderRequest { string order_id = 1; }
+message GetOrderResponse { Order order = 1; }
+
+message ListOrdersRequest {
+  int64 user_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+message ListOrdersResponse {
+  repeated Order orders = 1;
+  common.Cursor cursor = 2;
+}
+
+message CreatePaymentRequest {
+  string order_id = 1;
+  string channel = 2;
+}
+message CreatePaymentResponse { string payment_url = 1; }
+
+message PaymentWebhookRequest {
+  string channel = 1;
+  bytes raw_body = 2;
+}
+message PaymentWebhookResponse {}
+
+message GetCreatorRevenueRequest { int64 creator_id = 1; }
+message GetCreatorRevenueResponse {
+  double total_revenue = 1;
+  double pending_revenue = 2;
+  double settled_revenue = 3;
+  repeated Revenue recent_revenues = 4;
+}
+
+message RequestSettlementRequest {
+  double amount = 1;
+  string currency = 2;
+}
+message RequestSettlementResponse { string settlement_id = 1; }
+
+message ListSettlementsRequest {
+  int64 creator_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+message ListSettlementsResponse {
+  repeated Settlement settlements = 1;
+  common.Cursor cursor = 2;
+}

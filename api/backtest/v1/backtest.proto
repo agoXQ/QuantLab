@@ -1,0 +1,138 @@
+syntax = "proto3";
+
+package backtest;
+
+option go_package = "github.com/agoXQ/QuantLab/app/backtest/pb";
+
+import "api/common/v1/common.proto";
+
+service BacktestService {
+  rpc CreateBacktest(CreateBacktestRequest) returns (CreateBacktestResponse);
+  rpc GetBacktest(GetBacktestRequest) returns (GetBacktestResponse);
+  rpc CancelBacktest(CancelBacktestRequest) returns (CancelBacktestResponse);
+  rpc GetReport(GetReportRequest) returns (GetReportResponse);
+  rpc GetTrades(GetTradesRequest) returns (GetTradesResponse);
+  rpc GetPositions(GetPositionsRequest) returns (GetPositionsResponse);
+  rpc ListBacktests(ListBacktestsRequest) returns (ListBacktestsResponse);
+}
+
+message BacktestJob {
+  int64 id = 1;
+  int64 strategy_id = 2;
+  int64 version_id = 3;
+  int64 user_id = 4;
+  string status = 5;
+  string start_date = 6;
+  string end_date = 7;
+  string benchmark = 8;
+  double initial_capital = 9;
+  int64 created_at = 10;
+  int64 finished_at = 11;
+}
+
+message BacktestConfig {
+  int64 job_id = 1;
+  double commission_rate = 2;
+  double slippage_rate = 3;
+  double tax_rate = 4;
+  string rebalance_period = 5;
+  int32 max_position_count = 6;
+}
+
+message PerformanceReport {
+  int64 job_id = 1;
+  double annual_return = 2;
+  double total_return = 3;
+  double sharpe_ratio = 4;
+  double max_drawdown = 5;
+  double win_rate = 6;
+  double volatility = 7;
+  double beta = 8;
+  double alpha = 9;
+}
+
+message Trade {
+  int64 id = 1;
+  int64 order_id = 2;
+  string stock_code = 3;
+  int64 quantity = 4;
+  double price = 5;
+  double commission = 6;
+  int64 trade_time = 7;
+}
+
+message Position {
+  int64 id = 1;
+  int64 job_id = 2;
+  string stock_code = 3;
+  int64 quantity = 4;
+  double cost_price = 5;
+  double market_price = 6;
+  double market_value = 7;
+  string trade_date = 8;
+}
+
+message CreateBacktestRequest {
+  int64 strategy_id = 1;
+  int64 version_id = 2;
+  string start_date = 3;
+  string end_date = 4;
+}
+
+message CreateBacktestResponse {
+  int64 job_id = 1;
+}
+
+message GetBacktestRequest {
+  int64 job_id = 1;
+}
+
+message GetBacktestResponse {
+  BacktestJob job = 1;
+  BacktestConfig config = 2;
+}
+
+message CancelBacktestRequest {
+  int64 job_id = 1;
+}
+
+message CancelBacktestResponse {}
+
+message GetReportRequest {
+  int64 job_id = 1;
+}
+
+message GetReportResponse {
+  PerformanceReport report = 1;
+}
+
+message GetTradesRequest {
+  int64 job_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+
+message GetTradesResponse {
+  repeated Trade trades = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetPositionsRequest {
+  int64 job_id = 1;
+  string trade_date = 2;
+}
+
+message GetPositionsResponse {
+  repeated Position positions = 1;
+}
+
+message ListBacktestsRequest {
+  int64 user_id = 1;
+  common.Cursor cursor = 2;
+  int32 limit = 3;
+}
+
+message ListBacktestsResponse {
+  repeated BacktestJob jobs = 1;
+  common.Cursor cursor = 2;
+}

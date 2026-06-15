@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package ranking;
+
+option go_package = "github.com/agoXQ/QuantLab/app/ranking/pb";
+
+import "api/common/v1/common.proto";
+
+service RankingService {
+  rpc GetRanking(GetRankingRequest) returns (GetRankingResponse);
+  rpc GetStrategyRank(GetStrategyRankRequest) returns (GetStrategyRankResponse);
+  rpc GetAuthorRank(GetAuthorRankRequest) returns (GetAuthorRankResponse);
+  rpc GetHistoryRanking(GetHistoryRankingRequest) returns (GetHistoryRankingResponse);
+  rpc ListSnapshots(ListSnapshotsRequest) returns (ListSnapshotsResponse);
+}
+
+enum RankingType {
+  RANKING_TYPE_UNSPECIFIED = 0;
+  RETURN = 1;
+  SHARPE = 2;
+  WIN_RATE = 3;
+  DRAWDOWN = 4;
+  STABILITY = 5;
+  OVERALL = 6;
+  POPULARITY = 7;
+  AUTHOR = 8;
+}
+
+enum RankingPeriod {
+  RANKING_PERIOD_UNSPECIFIED = 0;
+  DAILY = 1;
+  WEEKLY = 2;
+  MONTHLY = 3;
+  QUARTERLY = 4;
+  YEARLY = 5;
+  ALL_TIME = 6;
+}
+
+message RankingItem {
+  int32 rank = 1;
+  int64 strategy_id = 2;
+  string strategy_name = 3;
+  int64 author_id = 4;
+  string author_name = 5;
+  double score = 6;
+  double trust_score = 7;
+  double total_return = 8;
+  double sharpe_ratio = 9;
+  double max_drawdown = 10;
+  double win_rate = 11;
+  int32 rank_change = 12;
+}
+
+message AuthorRankingItem {
+  int32 rank = 1;
+  int64 author_id = 2;
+  string author_name = 3;
+  double author_score = 4;
+  int32 strategy_count = 5;
+  double avg_return = 6;
+  double avg_sharpe = 7;
+  int64 follower_count = 8;
+}
+
+message RankingSnapshot {
+  int64 id = 1;
+  RankingType ranking_type = 2;
+  RankingPeriod ranking_period = 3;
+  int64 snapshot_time = 4;
+}
+
+message GetRankingRequest {
+  RankingType type = 1;
+  RankingPeriod period = 2;
+  common.Cursor cursor = 3;
+  int32 limit = 4;
+}
+message GetRankingResponse {
+  repeated RankingItem items = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetStrategyRankRequest {
+  int64 strategy_id = 1;
+  RankingType type = 2;
+}
+message GetStrategyRankResponse {
+  int32 rank = 1;
+  double score = 2;
+  double trust_score = 3;
+  RankingType type = 4;
+  RankingPeriod period = 5;
+}
+
+message GetAuthorRankRequest { int64 author_id = 1; }
+message GetAuthorRankResponse {
+  int32 rank = 1;
+  double author_score = 2;
+}
+
+message GetHistoryRankingRequest {
+  int64 strategy_id = 1;
+  RankingType type = 2;
+  int64 start_time = 3;
+  int64 end_time = 4;
+}
+message HistoryPoint {
+  int64 snapshot_time = 1;
+  int32 rank = 2;
+  double score = 3;
+}
+message GetHistoryRankingResponse { repeated HistoryPoint history = 1; }
+
+message ListSnapshotsRequest {
+  RankingType type = 1;
+  RankingPeriod period = 2;
+  common.Cursor cursor = 3;
+  int32 limit = 4;
+}
+message ListSnapshotsResponse {
+  repeated RankingSnapshot snapshots = 1;
+  common.Cursor cursor = 2;
+}

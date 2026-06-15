@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package ai;
+
+option go_package = "github.com/agoXQ/QuantLab/app/ai/pb";
+
+import "api/common/v1/common.proto";
+
+service AIService {
+  rpc GenerateStrategy(GenerateStrategyRequest) returns (GenerateStrategyResponse);
+  rpc ExplainStrategy(ExplainStrategyRequest) returns (ExplainStrategyResponse);
+  rpc OptimizeStrategy(OptimizeStrategyRequest) returns (OptimizeStrategyResponse);
+  rpc GeneratePortfolio(GeneratePortfolioRequest) returns (GeneratePortfolioResponse);
+  rpc OptimizePortfolio(OptimizePortfolioRequest) returns (OptimizePortfolioResponse);
+  rpc AnalyzeBacktest(AnalyzeBacktestRequest) returns (AnalyzeBacktestResponse);
+  rpc Chat(ChatRequest) returns (ChatResponse);
+  rpc GetTask(GetTaskRequest) returns (GetTaskResponse);
+  rpc GetReport(GetReportRequest) returns (GetReportResponse);
+}
+
+enum TaskType {
+  TASK_TYPE_UNSPECIFIED = 0;
+  GENERATE_STRATEGY = 1;
+  EXPLAIN_STRATEGY = 2;
+  OPTIMIZE_STRATEGY = 3;
+  GENERATE_PORTFOLIO = 4;
+  OPTIMIZE_PORTFOLIO = 5;
+  ANALYZE_BACKTEST = 6;
+  ASK_QUANTLAB = 7;
+}
+
+enum TaskStatus {
+  TASK_STATUS_UNSPECIFIED = 0;
+  PENDING = 1;
+  RUNNING = 2;
+  COMPLETED = 3;
+  FAILED = 4;
+  CANCELLED = 5;
+}
+
+message AITask {
+  int64 id = 1;
+  int64 user_id = 2;
+  TaskType task_type = 3;
+  TaskStatus status = 4;
+  string input_json = 5;
+  string output_json = 6;
+  int64 created_at = 7;
+  int64 updated_at = 8;
+}
+
+message AIReport {
+  int64 id = 1;
+  string object_type = 2;
+  int64 object_id = 3;
+  string summary = 4;
+  string strengths = 5;
+  string risks = 6;
+  string suggestions = 7;
+  int64 created_at = 8;
+}
+
+message GenerateStrategyRequest { string prompt = 1; }
+message GenerateStrategyResponse { int64 task_id = 1; }
+
+message ExplainStrategyRequest { int64 strategy_id = 1; }
+message ExplainStrategyResponse { int64 task_id = 1; }
+
+message OptimizeStrategyRequest { int64 strategy_id = 1; }
+message OptimizeStrategyResponse { int64 task_id = 1; }
+
+message GeneratePortfolioRequest { string prompt = 1; }
+message GeneratePortfolioResponse { int64 task_id = 1; }
+
+message OptimizePortfolioRequest { int64 portfolio_id = 1; }
+message OptimizePortfolioResponse { int64 task_id = 1; }
+
+message AnalyzeBacktestRequest { int64 backtest_id = 1; }
+message AnalyzeBacktestResponse { int64 task_id = 1; }
+
+message ChatRequest {
+  string message = 1;
+  int64 conversation_id = 2;
+}
+message ChatResponse {
+  string reply = 1;
+  int64 conversation_id = 2;
+}
+
+message GetTaskRequest { int64 task_id = 1; }
+message GetTaskResponse { AITask task = 1; }
+
+message GetReportRequest {
+  string object_type = 1;
+  int64 object_id = 2;
+}
+message GetReportResponse { AIReport report = 1; }

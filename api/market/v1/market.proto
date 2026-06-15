@@ -1,0 +1,153 @@
+syntax = "proto3";
+
+package market;
+
+option go_package = "github.com/agoXQ/QuantLab/app/market/pb";
+
+import "api/common/v1/common.proto";
+
+service MarketDataService {
+  rpc GetSecurity(GetSecurityRequest) returns (GetSecurityResponse);
+  rpc ListSecurities(ListSecuritiesRequest) returns (ListSecuritiesResponse);
+  rpc GetBars(GetBarsRequest) returns (GetBarsResponse);
+  rpc GetFinancials(GetFinancialsRequest) returns (GetFinancialsResponse);
+  rpc GetFactors(GetFactorsRequest) returns (GetFactorsResponse);
+  rpc GetIndex(GetIndexRequest) returns (GetIndexResponse);
+  rpc GetCalendar(GetCalendarRequest) returns (GetCalendarResponse);
+  rpc GetVersions(GetVersionsRequest) returns (GetVersionsResponse);
+}
+
+message Security {
+  int64 id = 1;
+  string stock_code = 2;
+  string stock_name = 3;
+  string exchange = 4;
+  string industry = 5;
+  string listing_date = 6;
+  string delisting_date = 7;
+  string status = 8;
+}
+
+message MarketBar {
+  string stock_code = 1;
+  string trade_date = 2;
+  string period = 3;
+  double open_price = 4;
+  double high_price = 5;
+  double low_price = 6;
+  double close_price = 7;
+  int64 volume = 8;
+  double amount = 9;
+  double adj_factor = 10;
+}
+
+message FinancialStatement {
+  string stock_code = 1;
+  string report_date = 2;
+  string report_type = 3;
+  double revenue = 4;
+  double net_profit = 5;
+  double total_assets = 6;
+  double total_liabilities = 7;
+  double net_assets = 8;
+}
+
+message FactorData {
+  string stock_code = 1;
+  string trade_date = 2;
+  string factor_name = 3;
+  double factor_value = 4;
+}
+
+message IndexBar {
+  string index_code = 1;
+  string trade_date = 2;
+  double close_price = 3;
+}
+
+message TradingCalendar {
+  string trade_date = 1;
+  bool is_open = 2;
+}
+
+message DataVersion {
+  string version = 1;
+  string description = 2;
+  int64 created_at = 3;
+}
+
+message GetSecurityRequest {
+  string stock_code = 1;
+}
+message GetSecurityResponse {
+  Security security = 1;
+}
+
+message ListSecuritiesRequest {
+  common.Cursor cursor = 1;
+  int32 limit = 2;
+}
+message ListSecuritiesResponse {
+  repeated Security securities = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetBarsRequest {
+  string stock_code = 1;
+  string start_date = 2;
+  string end_date = 3;
+  string period = 4;
+  string adjustment = 5;
+  common.Cursor cursor = 6;
+  int32 limit = 7;
+}
+message GetBarsResponse {
+  repeated MarketBar bars = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetFinancialsRequest {
+  string stock_code = 1;
+  string report_type = 2;
+  common.Cursor cursor = 3;
+  int32 limit = 4;
+}
+message GetFinancialsResponse {
+  repeated FinancialStatement statements = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetFactorsRequest {
+  string stock_code = 1;
+  string start_date = 2;
+  string end_date = 3;
+  repeated string factor_names = 4;
+  common.Cursor cursor = 5;
+  int32 limit = 6;
+}
+message GetFactorsResponse {
+  repeated FactorData factors = 1;
+  common.Cursor cursor = 2;
+}
+
+message GetIndexRequest {
+  string index_code = 1;
+  string start_date = 2;
+  string end_date = 3;
+}
+message GetIndexResponse {
+  repeated IndexBar bars = 1;
+}
+
+message GetCalendarRequest {
+  string start_date = 1;
+  string end_date = 2;
+}
+message GetCalendarResponse {
+  repeated TradingCalendar days = 1;
+}
+
+message GetVersionsRequest {}
+message GetVersionsResponse {
+  repeated DataVersion versions = 1;
+}
