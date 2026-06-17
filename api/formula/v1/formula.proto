@@ -20,7 +20,8 @@ message ValidateRequest {
 
 message ValidateResponse {
   bool valid = 1;
-  string error = 2;
+  int32 error_code = 2;
+  string error = 3;
 }
 
 message CompileRequest {
@@ -30,6 +31,9 @@ message CompileRequest {
 message CompileResponse {
   string ast_json = 1;
   string plan_json = 2;
+  bool valid = 3;
+  int32 error_code = 4;
+  string error = 5;
 }
 
 message GetASTRequest {

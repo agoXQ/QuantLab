@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/agoXQ/QuantLab/app/formula/internal/svc"
 	"github.com/agoXQ/QuantLab/app/formula/pb"
@@ -24,7 +25,22 @@ func NewCompileLogic(ctx context.Context, svcCtx *svc.ServiceContext) *CompileLo
 }
 
 func (l *CompileLogic) Compile(in *pb.CompileRequest) (*pb.CompileResponse, error) {
-	// todo: add your logic here and delete this line
+	result, err := l.svcCtx.FormulaService.Compile(l.ctx, in.Formula)
+	if err != nil {
+		l.Logger.Errorf("compile error: %v", err)
+		return &pb.CompileResponse{}, err
+	}
 
-	return &pb.CompileResponse{}, nil
+	astJSON, _ := json.Marshal(result.AST)
+	planJSON, _ := json.Marshal(result.Plan)
+
+	resp := &pb.CompileResponse{
+		AstJson:   string(astJSON),
+		PlanJson:  string(planJSON),
+		Valid:     result.Valid,
+		ErrorCode: int32(result.ErrorCode),
+		Error:     result.ErrorMsg,
+	}
+
+	return resp, nil
 }

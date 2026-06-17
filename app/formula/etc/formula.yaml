@@ -1,6 +1,21 @@
 Name: formula.rpc
 ListenOn: 0.0.0.0:8080
+HttpPort: 8081
 Etcd:
   Hosts:
   - 127.0.0.1:2379
   Key: formula.rpc
+
+RedisCache:
+  Host: localhost
+  Port: 6379
+  Pass: ""
+  DB: 0
+  TTL: 86400
+
+Postgres:
+  DSN: "postgres://quantlab:quantlab@localhost:5432/quantlab_formula?sslmode=disable"
+
+Kafka:
+  Brokers:
+    - localhost:9092

@@ -24,7 +24,31 @@ func NewGetFunctionLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetFu
 }
 
 func (l *GetFunctionLogic) GetFunction(in *pb.GetFunctionRequest) (*pb.GetFunctionResponse, error) {
-	// todo: add your logic here and delete this line
+	def, err := l.svcCtx.FormulaService.GetFunction(l.ctx, in.Name)
+	if err != nil {
+		l.Logger.Errorf("get function error: %v", err)
+		return &pb.GetFunctionResponse{}, err
+	}
 
-	return &pb.GetFunctionResponse{}, nil
+	if def == nil {
+		return &pb.GetFunctionResponse{}, nil
+	}
+
+	params := make([]*pb.FunctionParam, len(def.Args))
+	for i, arg := range def.Args {
+		params[i] = &pb.FunctionParam{
+			Name:      arg.Name,
+			ParamType: arg.ArgType,
+		}
+	}
+
+	return &pb.GetFunctionResponse{
+		Function: &pb.FunctionDefinition{
+			Name:        def.Name,
+			Category:    def.Category,
+			ReturnType:  def.ReturnType,
+			Description: def.Description,
+			Params:      params,
+		},
+	}, nil
 }

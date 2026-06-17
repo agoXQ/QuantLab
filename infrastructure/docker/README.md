@@ -7,6 +7,7 @@
 | 服务 | 镜像 | 端口 | 说明 |
 |---|---|---|---|
 | PostgreSQL + TimescaleDB | timescale/timescaledb:2-pg16 | 5432 | 主数据库 + 时序数据 |
+| etcd | bitnami/etcd:3.5 | 2379 / 2380 | 服务注册与发现 |
 | Redis | redis:7-alpine | 6379 | 缓存 / 会话 / 排行榜 |
 | Kafka | apache/kafka:4.0.0 | 9092 | 事件总线（KRaft 模式） |
 | Kafka UI | provectuslabs/kafka-ui | 8080 | 消息队列管理界面 |
@@ -34,6 +35,12 @@ Host: localhost:5432
 User: quantlab
 Password: quantlab_dev
 Database: quantlab_platform
+```
+
+### etcd
+
+```yaml
+Endpoint: http://localhost:2379
 ```
 
 ### Redis
@@ -92,6 +99,12 @@ make psql
 
 # 连接 Redis
 make redis-cli
+
+# 查看 etcd 健康状态
+make etcd-health
+
+# 查看 etcd 成员列表
+make etcd-members
 
 # 查看 Kafka 主题
 make kafka-topics

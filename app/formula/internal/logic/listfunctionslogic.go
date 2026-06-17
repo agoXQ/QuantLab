@@ -24,7 +24,29 @@ func NewListFunctionsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Lis
 }
 
 func (l *ListFunctionsLogic) ListFunctions(in *pb.ListFunctionsRequest) (*pb.ListFunctionsResponse, error) {
-	// todo: add your logic here and delete this line
+	defs, err := l.svcCtx.FormulaService.ListFunctions(l.ctx)
+	if err != nil {
+		l.Logger.Errorf("list functions error: %v", err)
+		return &pb.ListFunctionsResponse{}, err
+	}
 
-	return &pb.ListFunctionsResponse{}, nil
+	functions := make([]*pb.FunctionDefinition, 0, len(defs))
+	for _, def := range defs {
+		params := make([]*pb.FunctionParam, len(def.Args))
+		for i, arg := range def.Args {
+			params[i] = &pb.FunctionParam{
+				Name:      arg.Name,
+				ParamType: arg.ArgType,
+			}
+		}
+		functions = append(functions, &pb.FunctionDefinition{
+			Name:        def.Name,
+			Category:    def.Category,
+			ReturnType:  def.ReturnType,
+			Description: def.Description,
+			Params:      params,
+		})
+	}
+
+	return &pb.ListFunctionsResponse{Functions: functions}, nil
 }

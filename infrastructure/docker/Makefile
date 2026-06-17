@@ -2,7 +2,7 @@
 # QuantLab Infrastructure — Makefile
 # ============================================================
 
-.PHONY: up down restart status logs psql redis-cli kafka-topics clean
+.PHONY: up down restart status logs psql redis-cli etcd-health etcd-members kafka-topics create-topic minio-console clean
 
 # 启动所有基础设施
 up:
@@ -31,6 +31,14 @@ psql:
 # 连接 Redis
 redis-cli:
 	docker exec -it quantlab-redis redis-cli -a quantlab_dev
+
+# 查看 etcd 健康状态
+etcd-health:
+	docker exec quantlab-etcd etcdctl endpoint health --write-out=table
+
+# 查看 etcd 成员列表
+etcd-members:
+	docker exec quantlab-etcd etcdctl member list --write-out=table
 
 # 查看 Kafka 主题列表
 kafka-topics:

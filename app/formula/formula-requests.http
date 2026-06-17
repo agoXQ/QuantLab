@@ -1,0 +1,291 @@
+### ============================================================
+### Formula Service HTTP API 测试用例
+### 服务地址: http://localhost:8081
+### 基础路径: /api/v1/formula
+### ============================================================
+
+### ------------------------------------------------------------
+### 1. 验证接口 (POST /api/v1/formula/validate)
+### ------------------------------------------------------------
+
+### 1.1 验证合法公式 - 简单比较
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "ROE > 15"}
+
+### 1.2 验证合法公式 - 复合条件
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "PE < 20 AND ROE > 15"}
+
+### 1.3 验证合法公式 - 带函数调用
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "MA(CLOSE, 5) > MA(CLOSE, 20)"}
+
+### 1.4 验证合法公式 - 复杂选股条件
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "CROSS(MA(CLOSE, 5), MA(CLOSE, 20)) AND VOL > REF(VOL, 1) * 1.5"}
+
+### 1.5 验证非法公式 - 不存在的变量
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "UNKNOWN_VAR > 15"}
+
+### 1.6 验证非法公式 - 不存在的函数
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "FAKE_FUNC(CLOSE, 5) > 10"}
+
+### 1.7 验证非法公式 - 语法错误
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "ROE > "}
+
+### 1.8 验证非法公式 - 参数数量错误
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "MA(CLOSE)"}
+
+### 1.9 验证非法公式 - 类型不匹配
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "ABS(CLOSE)"}
+
+### 1.10 请求体为空
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{}
+
+### 1.11 请求体缺少 formula 字段
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"foo": "bar"}
+
+
+### ------------------------------------------------------------
+### 2. 编译接口 (POST /api/v1/formula/compile)
+### ------------------------------------------------------------
+
+### 2.1 编译简单公式 - 返回 AST + 执行计划
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "ROE > 15"}
+
+### 2.2 编译带函数的公式
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "MA(CLOSE, 5) > MA(CLOSE, 20)"}
+
+### 2.3 编译交叉信号公式
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "CROSS(MA(CLOSE, 5), MA(CLOSE, 20))"}
+
+### 2.4 编译复杂选股公式
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "CROSS(MA(CLOSE, 5), MA(CLOSE, 20)) AND VOL > REF(VOL, 1) * 1.5 AND PE < 30"}
+
+### 2.5 编译布林带公式
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "CLOSE > BOLL(CLOSE, 20, 2)"}
+
+### 2.6 编译无效公式 - 未知变量
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "UNKNOWN_VAR > 15"}
+
+### 2.7 编译无效公式 - 语法错误
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "ROE > "}
+
+
+### ------------------------------------------------------------
+### 3. 获取 AST 接口 (POST /api/v1/formula/ast)
+### ------------------------------------------------------------
+
+### 3.1 获取简单公式的 AST
+POST http://localhost:8081/api/v1/formula/ast
+Content-Type: application/json
+
+{"formula": "ROE > 15"}
+
+### 3.2 获取复合公式的 AST
+POST http://localhost:8081/api/v1/formula/ast
+Content-Type: application/json
+
+{"formula": "PE < 20 AND ROE > 15"}
+
+### 3.3 获取带函数调用的 AST
+POST http://localhost:8081/api/v1/formula/ast
+Content-Type: application/json
+
+{"formula": "MA(CLOSE, 5) > MA(CLOSE, 20)"}
+
+### 3.4 获取复杂公式的 AST
+POST http://localhost:8081/api/v1/formula/ast
+Content-Type: application/json
+
+{"formula": "CROSS(MA(CLOSE, 5), MA(CLOSE, 20)) AND VOL > REF(VOL, 1) * 1.5"}
+
+### 3.5 获取无效公式的 AST（预期返回错误）
+POST http://localhost:8081/api/v1/formula/ast
+Content-Type: application/json
+
+{"formula": "UNKNOWN_VAR > 15"}
+
+
+### ------------------------------------------------------------
+### 4. 列出所有函数 (GET /api/v1/formula/functions)
+### ------------------------------------------------------------
+
+### 4.1 获取所有可用函数列表
+GET http://localhost:8081/api/v1/formula/functions
+
+
+### ------------------------------------------------------------
+### 5. 获取单个函数详情 (GET /api/v1/formula/functions/:name)
+### ------------------------------------------------------------
+
+### 5.1 获取 MA 函数详情
+GET http://localhost:8081/api/v1/formula/functions/MA
+
+### 5.2 获取 EMA 函数详情
+GET http://localhost:8081/api/v1/formula/functions/EMA
+
+### 5.3 获取 MACD 函数详情
+GET http://localhost:8081/api/v1/formula/functions/MACD
+
+### 5.4 获取 RSI 函数详情
+GET http://localhost:8081/api/v1/formula/functions/RSI
+
+### 5.5 获取 CROSS 函数详情
+GET http://localhost:8081/api/v1/formula/functions/CROSS
+
+### 5.6 获取不存在的函数（预期 404）
+GET http://localhost:8081/api/v1/formula/functions/NONEXISTENT
+
+### 5.7 函数名大小写不敏感测试
+GET http://localhost:8081/api/v1/formula/functions/ma
+
+
+### ------------------------------------------------------------
+### 6. 综合场景 - 完整工作流
+### ------------------------------------------------------------
+
+### 6.1 场景：金叉选股 - 先验证再编译
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "CROSS(MA(CLOSE, 5), MA(CLOSE, 20)) AND VOL > REF(VOL, 1) * 2"}
+
+### 6.2 场景：金叉选股 - 编译
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "CROSS(MA(CLOSE, 5), MA(CLOSE, 20)) AND VOL > REF(VOL, 1) * 2"}
+
+### 6.3 场景：超卖反弹 - RSI < 30 且放量
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "RSI(CLOSE, 14) < 30 AND VOL > AVG(VOL, 5) * 1.5"}
+
+### 6.4 场景：超卖反弹 - 编译
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "RSI(CLOSE, 14) < 30 AND VOL > AVG(VOL, 5) * 1.5"}
+
+### 6.5 场景：均线多头排列
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "MA(CLOSE, 5) > MA(CLOSE, 10) AND MA(CLOSE, 10) > MA(CLOSE, 20) AND MA(CLOSE, 20) > MA(CLOSE, 60)"}
+
+### 6.6 场景：均线多头排列 - 编译
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "MA(CLOSE, 5) > MA(CLOSE, 10) AND MA(CLOSE, 10) > MA(CLOSE, 20) AND MA(CLOSE, 20) > MA(CLOSE, 60)"}
+
+### 6.7 场景：基本面选股 - 低估值高增长
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "PE < 15 AND PB < 2 AND ROE > 15 AND RevenueGrowth > 20"}
+
+### 6.8 场景：基本面选股 - 编译
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "PE < 15 AND PB < 2 AND ROE > 15 AND RevenueGrowth > 20"}
+
+
+### ------------------------------------------------------------
+### 7. 赋值语法 & 多语句程序 (新增支持)
+### ------------------------------------------------------------
+
+### 7.1 简单赋值
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "Y1:=ROE>15; Y1"}
+
+### 7.2 多语句赋值 - 编译
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "Y1:=MA(C,5)>MA(C,20); Y2:=VOL>REF(VOL,1)*1.5; Y1 AND Y2"}
+
+### 7.3 中文变量名 + 冒号命名结果
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "Y1:=MA(C,5)>MA(C,20); 结果: Y1"}
+
+### 7.4 使用短变量别名 C/O/H/L/V
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "C>O AND H>REF(H,1) AND L<REF(L,1)"}
+
+### 7.5 早晨之星 - 完整选股公式
+POST http://localhost:8081/api/v1/formula/validate
+Content-Type: application/json
+
+{"formula": "Y1:=REF(C,2)<REF(O,2) AND (REF(O,2)-REF(C,2))/REF(C,2)*100>=2.5; Y2:=ABS(REF(C,1)-REF(O,1))/REF(O,1)*100<=1.5; Y3:=C>O AND (C-O)/O*100>=2.5 AND C>REF(C,2)+(REF(O,2)-REF(C,2))/2; 下跌趋势:=MA(C,5)<MA(C,10) AND MA(C,10)<MA(C,20); 早晨之星: Y1 AND Y2 AND Y3 AND 下跌趋势"}
+
+### 7.6 早晨之星 - 编译
+POST http://localhost:8081/api/v1/formula/compile
+Content-Type: application/json
+
+{"formula": "Y1:=REF(C,2)<REF(O,2) AND (REF(O,2)-REF(C,2))/REF(C,2)*100>=2.5; Y2:=ABS(REF(C,1)-REF(O,1))/REF(O,1)*100<=1.5; Y3:=C>O AND (C-O)/O*100>=2.5 AND C>REF(C,2)+(REF(O,2)-REF(C,2))/2; 下跌趋势:=MA(C,5)<MA(C,10) AND MA(C,10)<MA(C,20); 早晨之星: Y1 AND Y2 AND Y3 AND 下跌趋势"}
+
+### 7.7 获取早晨之星 AST
+POST http://localhost:8081/api/v1/formula/ast
+Content-Type: application/json
+
+{"formula": "Y1:=REF(C,2)<REF(O,2) AND (REF(O,2)-REF(C,2))/REF(C,2)*100>=2.5; Y2:=ABS(REF(C,1)-REF(O,1))/REF(O,1)*100<=1.5; Y3:=C>O AND (C-O)/O*100>=2.5 AND C>REF(C,2)+(REF(O,2)-REF(C,2))/2; 下跌趋势:=MA(C,5)<MA(C,10) AND MA(C,10)<MA(C,20); 早晨之星: Y1 AND Y2 AND Y3 AND 下跌趋势"}

@@ -2,6 +2,7 @@ package logic
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/agoXQ/QuantLab/app/formula/internal/svc"
 	"github.com/agoXQ/QuantLab/app/formula/pb"
@@ -24,7 +25,15 @@ func NewGetASTLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetASTLogi
 }
 
 func (l *GetASTLogic) GetAST(in *pb.GetASTRequest) (*pb.GetASTResponse, error) {
-	// todo: add your logic here and delete this line
+	node, err := l.svcCtx.FormulaService.GetAST(l.ctx, in.Formula)
+	if err != nil {
+		l.Logger.Errorf("get AST error: %v", err)
+		return &pb.GetASTResponse{}, err
+	}
 
-	return &pb.GetASTResponse{}, nil
+	astJSON, _ := json.Marshal(node)
+
+	return &pb.GetASTResponse{
+		AstJson: string(astJSON),
+	}, nil
 }

@@ -1,7 +1,7 @@
 # ============================================================
 # QuantLab Infrastructure — Docker Compose
 # ============================================================
-# MVP 阶段基础设施：PostgreSQL + TimescaleDB + Redis + Kafka + MinIO
+# MVP 阶段基础设施：PostgreSQL + TimescaleDB + Redis + etcd + Kafka + MinIO
 # 参考：Documents/Deployment/QuantLab Deployment Architecture v1.0.md
 # 参考：Documents/Standard/QuantLab Database Design Standard v1.0.md
 # ============================================================
@@ -13,6 +13,8 @@ networks:
     driver: bridge
 
 volumes:
+  etcd-data:
+    driver: local
   postgresql-data:
     driver: local
   redis-data:
@@ -94,6 +96,49 @@ services:
           memory: 128M
 
   # ============================================================
+  # etcd — 服务注册与发现
+  # ============================================================
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.14
+    container_name: quantlab-etcd
+    restart: unless-stopped
+    networks:
+      - quantlab-net
+    ports:
+      - "2379:2379"
+      - "2380:2380"
+    environment:
+      - ALLOW_NONE_AUTHENTICATION=yes
+      - ETCD_NAME=quantlab-etcd
+      - ETCD_DATA_DIR=/bitnami/etcd/data
+      - ETCD_LISTEN_CLIENT_URLS=http://0.0.0.0:2379
+      - ETCD_ADVERTISE_CLIENT_URLS=http://127.0.0.1:2379
+      - ETCD_LISTEN_PEER_URLS=http://0.0.0.0:2380
+      - ETCD_INITIAL_ADVERTISE_PEER_URLS=http://127.0.0.1:2380
+      - ETCD_INITIAL_CLUSTER=quantlab-etcd=http://127.0.0.1:2380
+      - ETCD_INITIAL_CLUSTER_STATE=new
+      - ETCD_INITIAL_CLUSTER_TOKEN=quantlab-etcd-token
+      - ETCD_AUTO_COMPACTION_RETENTION=1
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+    volumes:
+      - etcd-data:/bitnami/etcd/data
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health", "--write-out=json"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.2"
+          memory: 128M
+
+
+  # ============================================================
   # Kafka (KRaft mode — no ZooKeeper)
   # ============================================================
   kafka:
@@ -155,7 +200,7 @@ services:
     networks:
       - quantlab-net
     ports:
-      - "8080:8080"
+      - "10080:10080"
     environment:
       KAFKA_CLUSTERS_0_NAME: quantlab
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092

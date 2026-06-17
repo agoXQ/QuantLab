@@ -40,3 +40,6 @@ infrastructure/docker/data/
 # Temporary
 tmp/
 temp/
+
+# http test
+.http

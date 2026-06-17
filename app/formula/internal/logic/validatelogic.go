@@ -24,7 +24,24 @@ func NewValidateLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Validate
 }
 
 func (l *ValidateLogic) Validate(in *pb.ValidateRequest) (*pb.ValidateResponse, error) {
-	// todo: add your logic here and delete this line
+	result, err := l.svcCtx.FormulaService.Validate(l.ctx, in.Formula)
+	if err != nil {
+		l.Logger.Errorf("validate error: %v", err)
+		return &pb.ValidateResponse{}, err
+	}
 
-	return &pb.ValidateResponse{}, nil
+	if result.Valid {
+		return &pb.ValidateResponse{Valid: true}, nil
+	}
+
+	if len(result.Errors) > 0 {
+		first := result.Errors[0]
+		return &pb.ValidateResponse{
+			Valid:     false,
+			ErrorCode: int32(first.Code),
+			Error:     first.Message,
+		}, nil
+	}
+
+	return &pb.ValidateResponse{Valid: false}, nil
 }
