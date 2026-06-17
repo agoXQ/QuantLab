@@ -11,6 +11,9 @@ import (
 
 	"github.com/agoXQ/QuantLab/app/formula/application/formula"
 	infraCache "github.com/agoXQ/QuantLab/app/formula/infrastructure/cache"
+	infraDataport "github.com/agoXQ/QuantLab/app/formula/infrastructure/dataport"
+	infraEvaluator "github.com/agoXQ/QuantLab/app/formula/infrastructure/evaluator"
+	infraIndicators "github.com/agoXQ/QuantLab/app/formula/infrastructure/indicators"
 	infraLog "github.com/agoXQ/QuantLab/app/formula/infrastructure/compilelog"
 	infraEvent "github.com/agoXQ/QuantLab/app/formula/infrastructure/event"
 	"github.com/agoXQ/QuantLab/app/formula/infrastructure/function"
@@ -26,10 +29,12 @@ import (
 
 // ServiceContext is the composition root for the Formula Engine service.
 type ServiceContext struct {
-	Config         config.Config
-	FormulaService formula.Service
-	DB             *sql.DB
-	Metrics        *infraMetrics.PrometheusCollector
+	Config           config.Config
+	FormulaService   formula.Service
+	EvaluatorService formula.EvaluatorService
+	DataPort         *infraDataport.InMemory
+	DB               *sql.DB
+	Metrics          *infraMetrics.PrometheusCollector
 }
 
 // NewServiceContext creates a new ServiceContext with all dependencies wired.
@@ -59,11 +64,21 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	var db *sql.DB
 	svc = wrapWithCompileLog(c, svc, &db)
 
+	// Build the evaluator pipeline. The in-memory data port is the
+	// default; once the Market Data client is wired in, swap this with
+	// the gRPC adapter without touching the rest of the graph.
+	dataPort := infraDataport.NewInMemory()
+	indicatorLib := infraIndicators.NewLibrary()
+	evaluator := infraEvaluator.New(indicatorLib, varRegistry)
+	evalSvc := formula.NewEvaluatorService(svc, evaluator)
+
 	return &ServiceContext{
-		Config:         c,
-		FormulaService: svc,
-		DB:             db,
-		Metrics:        metrics,
+		Config:           c,
+		FormulaService:   svc,
+		EvaluatorService: evalSvc,
+		DataPort:         dataPort,
+		DB:               db,
+		Metrics:          metrics,
 	}
 }
 
