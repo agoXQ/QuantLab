@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	mappers "github.com/agoXQ/QuantLab/app/market/interfaces/grpc"
 	"github.com/agoXQ/QuantLab/app/market/internal/svc"
 	"github.com/agoXQ/QuantLab/app/market/pb"
 
@@ -24,7 +25,9 @@ func NewGetVersionsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetVe
 }
 
 func (l *GetVersionsLogic) GetVersions(in *pb.GetVersionsRequest) (*pb.GetVersionsResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetVersionsResponse{}, nil
+	res, err := l.svcCtx.MarketService.ListVersions(l.ctx, 0)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetVersionsResponse{Versions: mappers.VersionsToPB(res.Items)}, nil
 }

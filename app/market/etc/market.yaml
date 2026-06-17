@@ -1,6 +1,31 @@
 Name: market.rpc
-ListenOn: 0.0.0.0:8080
+ListenOn: 0.0.0.0:8082
+HttpPort: 8083
+MetricsPort: 9092
 Etcd:
   Hosts:
-  - 127.0.0.1:2379
+    - 127.0.0.1:2379
   Key: market.rpc
+
+Postgres:
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_market_data?sslmode=disable"
+  MaxOpenConns: 20
+  MaxIdleConns: 5
+  ConnMaxLifetime: 1800
+  AutoMigrate: true
+
+RedisCache:
+  Host: localhost
+  Port: 6379
+  Pass: quantlab_dev
+  DB: 1
+  TTL: 3600
+
+Kafka:
+  Brokers:
+    - localhost:9092
+
+Provider:
+  Driver: tushare
+  Endpoint: ""
+  TokenEnv: TUSHARE_TOKEN

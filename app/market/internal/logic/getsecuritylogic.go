@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	mappers "github.com/agoXQ/QuantLab/app/market/interfaces/grpc"
 	"github.com/agoXQ/QuantLab/app/market/internal/svc"
 	"github.com/agoXQ/QuantLab/app/market/pb"
 
@@ -24,7 +25,9 @@ func NewGetSecurityLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetSe
 }
 
 func (l *GetSecurityLogic) GetSecurity(in *pb.GetSecurityRequest) (*pb.GetSecurityResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetSecurityResponse{}, nil
+	sec, err := l.svcCtx.MarketService.GetSecurity(l.ctx, in.GetStockCode())
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetSecurityResponse{Security: mappers.SecurityToPB(sec)}, nil
 }

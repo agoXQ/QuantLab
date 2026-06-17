@@ -7,9 +7,14 @@ package server
 import (
 	"context"
 
+	domainErr "github.com/agoXQ/QuantLab/app/market/domain/errors"
 	"github.com/agoXQ/QuantLab/app/market/internal/logic"
 	"github.com/agoXQ/QuantLab/app/market/internal/svc"
 	"github.com/agoXQ/QuantLab/app/market/pb"
+	"github.com/agoXQ/QuantLab/pkg/errors"
+
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 type MarketDataServiceServer struct {
@@ -18,47 +23,74 @@ type MarketDataServiceServer struct {
 }
 
 func NewMarketDataServiceServer(svcCtx *svc.ServiceContext) *MarketDataServiceServer {
-	return &MarketDataServiceServer{
-		svcCtx: svcCtx,
+	return &MarketDataServiceServer{svcCtx: svcCtx}
+}
+
+// translateError converts the layered error catalogue into a gRPC status.
+func translateError(err error) error {
+	if err == nil {
+		return nil
+	}
+	if mErr, ok := err.(*domainErr.MarketError); ok {
+		return status.Error(grpcCodeForError(mErr.Code), mErr.Message)
+	}
+	if appErr, ok := err.(*errors.AppError); ok {
+		return status.Error(grpcCodeForError(appErr.Code), appErr.Message)
+	}
+	return status.Error(codes.Internal, err.Error())
+}
+
+func grpcCodeForError(code int) codes.Code {
+	switch {
+	case code >= 10000 && code < 20000:
+		return codes.InvalidArgument
+	case code >= 20000 && code < 30000:
+		return codes.FailedPrecondition
+	case code >= 30000 && code < 40000:
+		return codes.PermissionDenied
+	case code >= 40000 && code < 50000:
+		return codes.NotFound
+	default:
+		return codes.Internal
 	}
 }
 
 func (s *MarketDataServiceServer) GetSecurity(ctx context.Context, in *pb.GetSecurityRequest) (*pb.GetSecurityResponse, error) {
-	l := logic.NewGetSecurityLogic(ctx, s.svcCtx)
-	return l.GetSecurity(in)
+	res, err := logic.NewGetSecurityLogic(ctx, s.svcCtx).GetSecurity(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) ListSecurities(ctx context.Context, in *pb.ListSecuritiesRequest) (*pb.ListSecuritiesResponse, error) {
-	l := logic.NewListSecuritiesLogic(ctx, s.svcCtx)
-	return l.ListSecurities(in)
+	res, err := logic.NewListSecuritiesLogic(ctx, s.svcCtx).ListSecurities(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) GetBars(ctx context.Context, in *pb.GetBarsRequest) (*pb.GetBarsResponse, error) {
-	l := logic.NewGetBarsLogic(ctx, s.svcCtx)
-	return l.GetBars(in)
+	res, err := logic.NewGetBarsLogic(ctx, s.svcCtx).GetBars(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) GetFinancials(ctx context.Context, in *pb.GetFinancialsRequest) (*pb.GetFinancialsResponse, error) {
-	l := logic.NewGetFinancialsLogic(ctx, s.svcCtx)
-	return l.GetFinancials(in)
+	res, err := logic.NewGetFinancialsLogic(ctx, s.svcCtx).GetFinancials(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) GetFactors(ctx context.Context, in *pb.GetFactorsRequest) (*pb.GetFactorsResponse, error) {
-	l := logic.NewGetFactorsLogic(ctx, s.svcCtx)
-	return l.GetFactors(in)
+	res, err := logic.NewGetFactorsLogic(ctx, s.svcCtx).GetFactors(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) GetIndex(ctx context.Context, in *pb.GetIndexRequest) (*pb.GetIndexResponse, error) {
-	l := logic.NewGetIndexLogic(ctx, s.svcCtx)
-	return l.GetIndex(in)
+	res, err := logic.NewGetIndexLogic(ctx, s.svcCtx).GetIndex(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) GetCalendar(ctx context.Context, in *pb.GetCalendarRequest) (*pb.GetCalendarResponse, error) {
-	l := logic.NewGetCalendarLogic(ctx, s.svcCtx)
-	return l.GetCalendar(in)
+	res, err := logic.NewGetCalendarLogic(ctx, s.svcCtx).GetCalendar(in)
+	return res, translateError(err)
 }
 
 func (s *MarketDataServiceServer) GetVersions(ctx context.Context, in *pb.GetVersionsRequest) (*pb.GetVersionsResponse, error) {
-	l := logic.NewGetVersionsLogic(ctx, s.svcCtx)
-	return l.GetVersions(in)
+	res, err := logic.NewGetVersionsLogic(ctx, s.svcCtx).GetVersions(in)
+	return res, translateError(err)
 }

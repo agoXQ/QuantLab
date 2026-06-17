@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	mappers "github.com/agoXQ/QuantLab/app/market/interfaces/grpc"
 	"github.com/agoXQ/QuantLab/app/market/internal/svc"
 	"github.com/agoXQ/QuantLab/app/market/pb"
 
@@ -24,7 +25,13 @@ func NewListSecuritiesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Li
 }
 
 func (l *ListSecuritiesLogic) ListSecurities(in *pb.ListSecuritiesRequest) (*pb.ListSecuritiesResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.ListSecuritiesResponse{}, nil
+	q := mappers.ListQueryFromPB(in)
+	res, err := l.svcCtx.MarketService.ListSecurities(l.ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ListSecuritiesResponse{
+		Securities: mappers.SecuritiesToPB(res.Items),
+		Cursor:     mappers.CursorPB(res.NextCursor, res.HasMore),
+	}, nil
 }

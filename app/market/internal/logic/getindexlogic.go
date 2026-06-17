@@ -3,6 +3,8 @@ package logic
 import (
 	"context"
 
+	appMarket "github.com/agoXQ/QuantLab/app/market/application/market"
+	mappers "github.com/agoXQ/QuantLab/app/market/interfaces/grpc"
 	"github.com/agoXQ/QuantLab/app/market/internal/svc"
 	"github.com/agoXQ/QuantLab/app/market/pb"
 
@@ -24,7 +26,16 @@ func NewGetIndexLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetIndex
 }
 
 func (l *GetIndexLogic) GetIndex(in *pb.GetIndexRequest) (*pb.GetIndexResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetIndexResponse{}, nil
+	rng, err := parseDateRange(in.GetStartDate(), in.GetEndDate())
+	if err != nil {
+		return nil, err
+	}
+	res, err := l.svcCtx.MarketService.GetIndex(l.ctx, appMarket.GetIndexQuery{
+		IndexCode: in.GetIndexCode(),
+		Range:     rng,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetIndexResponse{Bars: mappers.IndexBarsToPB(res.Items)}, nil
 }
