@@ -1,0 +1,20 @@
+{
+  "generated_at": "2026-06-18T14:04:14.790318Z",
+  "universe": [
+    "000001",
+    "600000",
+    "600036"
+  ],
+  "formula": "MA(CLOSE, 5) \u003e MA(CLOSE, 20)",
+  "start_date": "2024-01-02",
+  "end_date": "2024-06-28",
+  "initial_capital": 1000000,
+  "final_asset": 1253487.80721957,
+  "total_return": 0.2534878072195701,
+  "annual_return": 0.5459737386267663,
+  "volatility": 0.16988809118769077,
+  "sharpe_ratio": 2.950471513708615,
+  "max_drawdown": 0.06808328762829918,
+  "win_rate": 1,
+  "trade_count": 17
+}

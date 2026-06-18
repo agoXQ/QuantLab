@@ -1,0 +1,65 @@
+# cn_smoke is the canonical end-to-end smoke scenario for the Backtest
+# engine. The configuration is intentionally tiny so the run finishes in
+# a few seconds even when ingestion goes through Tushare.
+name: cn_smoke
+description: |
+  3-symbol A-share monthly rebalance on a 6-month window using a simple
+  momentum filter. The headline metrics are stable across runs because
+  the universe is fixed and Tushare bars do not retroactively change.
+
+ingest:
+  # Set skip:true once the database is warm to keep iteration fast.
+  skip: false
+  market: CN
+  description: backtest_e2e cn_smoke
+  bars:
+    range:
+      start: 2023-12-01
+      end:   2024-06-30
+    period: day
+  calendar:
+    range:
+      start: 2023-12-01
+      end:   2024-06-30
+  # financials / factors require Tushare premium points and are
+  # disabled in the bundled smoke scenario. Re-enable when the deployed
+  # token has access to income / daily_basic.
+  # financials:
+  #   range:
+  #     start: 2023-01-01
+  #     end:   2024-06-30
+  #   report_type: annual
+  # factors:
+  #   range:
+  #     start: 2023-12-01
+  #     end:   2024-06-30
+  #   names: [pe, pb, total_mv]
+
+backtest:
+  formula: "MA(CLOSE, 5) > MA(CLOSE, 20)"
+  universe:
+    - "000001"
+    - "600000"
+    - "600036"
+  data_version: ""
+  initial_capital: 1000000
+  benchmark: ""
+  range:
+    start: 2024-01-02
+    end:   2024-06-28
+  config:
+    rebalance_frequency: monthly
+    max_position_count: 3
+    lookback_bars: 60
+
+baseline:
+  # Fields are populated automatically when missing. Tolerance is the
+  # absolute delta we permit before the harness fails.
+  tolerance:
+    total_return:  0.02
+    annual_return: 0.05
+    volatility:    0.02
+    sharpe_ratio:  0.50
+    max_drawdown:  0.02
+    win_rate:      0.05
+    trade_count:   2
