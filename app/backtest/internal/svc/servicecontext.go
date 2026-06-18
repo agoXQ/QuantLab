@@ -16,6 +16,7 @@ import (
 	"github.com/agoXQ/QuantLab/app/backtest/domain/backtestjob"
 	domevent "github.com/agoXQ/QuantLab/app/backtest/domain/event"
 	domexec "github.com/agoXQ/QuantLab/app/backtest/domain/executor"
+	dommarket "github.com/agoXQ/QuantLab/app/backtest/domain/marketdata"
 	domorder "github.com/agoXQ/QuantLab/app/backtest/domain/order"
 	domportfolio "github.com/agoXQ/QuantLab/app/backtest/domain/portfolio"
 	domreport "github.com/agoXQ/QuantLab/app/backtest/domain/report"
@@ -29,6 +30,7 @@ import (
 	infraStrategy "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategy"
 
 	appFormula "github.com/agoXQ/QuantLab/app/formula/application/formula"
+	domainEval "github.com/agoXQ/QuantLab/app/formula/domain/evaluator"
 	formulaDataport "github.com/agoXQ/QuantLab/app/formula/infrastructure/dataport"
 	formulaInfraEval "github.com/agoXQ/QuantLab/app/formula/infrastructure/evaluator"
 	formulaInfraFunc "github.com/agoXQ/QuantLab/app/formula/infrastructure/function"
@@ -43,12 +45,22 @@ import (
 
 // ServiceContext is the composition root for the Backtest Engine service.
 type ServiceContext struct {
-	Config         config.Config
-	BacktestSvc    appBacktest.Service
+	Config      config.Config
+	BacktestSvc appBacktest.Service
+	// MarketProvider is the in-memory market provider. It is non-nil only
+	// when the service falls back to the in-memory adapters (CI smoke
+	// tests, local exploration without the Market Data database). In
+	// production both data paths read from the Market Data Postgres
+	// tables and this field stays nil.
 	MarketProvider *infraMarketData.InMemory
-	FormulaPort    *formulaDataport.InMemory
-	Executor       domexec.StrategyExecutor
-	DB             *sql.DB
+	// FormulaPort is the in-memory formula data port and is set under the
+	// same conditions as MarketProvider above.
+	FormulaPort *formulaDataport.InMemory
+	Executor    domexec.StrategyExecutor
+	DB          *sql.DB
+	// MarketDataDB is the *sql.DB connected to the Market Data database
+	// when the platform stack is wired; nil when running in-memory.
+	MarketDataDB *sql.DB
 }
 
 // NewServiceContext wires the dependency graph.
@@ -61,11 +73,38 @@ type ServiceContext struct {
 func NewServiceContext(c config.Config) *ServiceContext {
 	publisher := buildPublisher(c)
 	matching := infraMatching.NewNextOpenEngine(infraMatching.EngineConfig{})
-	provider := infraMarketData.NewInMemory()
-	formulaPort := formulaDataport.NewInMemory()
+
+	// Pick the data sources. Backtest end-to-end runs need the same bars
+	// on both sides: the engine itself walks the calendar through
+	// marketdata.Provider, and the FormulaExecutor reads bars / financials
+	// through evaluator.DataPort. buildMarketStack wires both off the same
+	// Market Data Postgres database when MarketData.DSN is configured;
+	// otherwise we fall back to the in-memory adapters so the binary
+	// still boots without the platform DB.
+	stack, err := buildMarketStack(c.MarketData)
+	if err != nil {
+		log.Printf("[backtest] warning: market data stack unavailable: %v; falling back to in-memory", err)
+		stack = marketStack{}
+	}
+
+	var (
+		marketProvider  dommarket.Provider
+		formulaDataPort domainEval.DataPort
+		inMemMarket     *infraMarketData.InMemory
+		inMemFormula    *formulaDataport.InMemory
+	)
+	if stack.provider != nil && stack.dataPort != nil {
+		marketProvider = stack.provider
+		formulaDataPort = stack.dataPort
+	} else {
+		inMemMarket = infraMarketData.NewInMemory()
+		inMemFormula = formulaDataport.NewInMemory()
+		marketProvider = inMemMarket
+		formulaDataPort = inMemFormula
+	}
 
 	_, evaluatorSvc := buildFormulaStack()
-	executor := infraStrategy.NewFormulaExecutor(evaluatorSvc, formulaPort)
+	executor := infraStrategy.NewFormulaExecutor(evaluatorSvc, formulaDataPort)
 
 	jobs, orders, trades, portfolios, reports, db := buildRepositories(c)
 
@@ -77,7 +116,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		Reports:    reports,
 		Executor:   executor,
 		Matching:   matching,
-		MarketData: provider,
+		MarketData: marketProvider,
 		Publisher:  publisher,
 		Clock:      time.Now,
 	})
@@ -85,12 +124,14 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	return &ServiceContext{
 		Config:         c,
 		BacktestSvc:    svc,
-		MarketProvider: provider,
-		FormulaPort:    formulaPort,
+		MarketProvider: inMemMarket,
+		FormulaPort:    inMemFormula,
 		Executor:       executor,
 		DB:             db,
+		MarketDataDB:   stack.db,
 	}
 }
+
 
 // buildRepositories returns the repository set and the underlying *sql.DB
 // (nil when running in-memory). The function never panics: any Postgres

@@ -25,10 +25,14 @@ RedisCache:
 Kafka:
   Brokers: []
 
-# MarketData is the in-process Market Data adapter. When DSN is empty the
-# service uses the in-memory provider exposed for fixtures / local replay.
+# MarketData reads bars / financials / factors from the same Postgres
+# database the Market Data service writes to. The Backtest engine (via
+# FromMarketService) and the Formula evaluator (via RepositoryDataPort)
+# both connect through this DSN so end-to-end runs replay real ingested
+# data. Leave DSN empty to fall back to the in-memory provider used for
+# CI smoke tests and local exploration.
 MarketData:
-  DSN: ""
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_market_data?sslmode=disable"
   Adjustment: pre
   MaxOpenConns: 10
   MaxIdleConns: 2
