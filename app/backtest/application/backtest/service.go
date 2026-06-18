@@ -22,6 +22,7 @@ import (
 	dommarket "github.com/agoXQ/QuantLab/app/backtest/domain/marketdata"
 	domorder "github.com/agoXQ/QuantLab/app/backtest/domain/order"
 	domportfolio "github.com/agoXQ/QuantLab/app/backtest/domain/portfolio"
+	domqueue "github.com/agoXQ/QuantLab/app/backtest/domain/queue"
 	domreport "github.com/agoXQ/QuantLab/app/backtest/domain/report"
 	domtrade "github.com/agoXQ/QuantLab/app/backtest/domain/trade"
 	"github.com/agoXQ/QuantLab/app/backtest/domain/valueobject"
@@ -30,7 +31,23 @@ import (
 // Service is the application-level interface for the Backtest Engine.
 type Service interface {
 	Create(ctx context.Context, req CreateBacktestRequest) (*CreateBacktestResult, error)
+	// Run executes the job synchronously in the calling goroutine. It is
+	// kept for the inline ?run=true / ?wait=true paths and the e2e
+	// regression harness; production traffic should go through Submit.
 	Run(ctx context.Context, jobID int64) (*RunResult, error)
+	// Submit transitions the job into QUEUED and hands it to the queue
+	// port. It returns immediately; workers pick the job up asynchronously
+	// and call RunQueued. Returns ErrQueueUnavailable when no queue is
+	// configured (in-memory dev binary without async wiring).
+	Submit(ctx context.Context, jobID int64) (*backtestjob.BacktestJob, error)
+	// Cancel requests termination of a non-terminal job. Jobs already
+	// running are flipped to CANCELLED in the repository; the worker
+	// observes that on its next status read and stops.
+	Cancel(ctx context.Context, jobID int64, reason string) (*backtestjob.BacktestJob, error)
+	// RunQueued is the worker callback. It mirrors Run but does not
+	// surface a RunResult (the worker has nowhere to send it) and writes
+	// the failure reason back to ErrorMessage on the job row.
+	RunQueued(ctx context.Context, jobID int64) error
 	Get(ctx context.Context, jobID int64) (*backtestjob.BacktestJob, error)
 	List(ctx context.Context, q ListJobsQuery) ([]*backtestjob.BacktestJob, error)
 	GetReport(ctx context.Context, jobID int64) (*domreport.PerformanceReport, error)
@@ -49,7 +66,11 @@ type Dependencies struct {
 	Matching   dommatch.Engine
 	MarketData dommarket.Provider
 	Publisher  domevent.Publisher
-	Clock      func() time.Time
+	// Queue is the asynchronous transport for queued jobs. It is
+	// optional; when nil, Submit returns ErrQueueUnavailable so callers
+	// fall back to the synchronous Run path.
+	Queue domqueue.Queue
+	Clock func() time.Time
 }
 
 type service struct {

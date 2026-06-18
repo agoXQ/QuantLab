@@ -40,6 +40,8 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.GET("", h.List)
 	rg.GET(":id", h.Get)
 	rg.POST(":id/run", h.Run)
+	rg.POST(":id/cancel", h.Cancel)
+	rg.GET(":id/status", h.GetStatus)
 	rg.GET(":id/report", h.GetReport)
 	rg.GET(":id/trades", h.GetTrades)
 	rg.GET(":id/positions", h.GetPositions)
@@ -75,6 +77,18 @@ type configPayload struct {
 type runResponse struct {
 	Job    any `json:"job"`
 	Report any `json:"report,omitempty"`
+}
+
+// statusView is the lightweight projection returned by GET :id/status.
+// It is decoupled from the aggregate JSON so we can evolve the projection
+// (e.g. add progress percentage) without changing the canonical job
+// payload returned by GET :id.
+type statusView struct {
+	ID           int64      `json:"id"`
+	Status       string     `json:"status"`
+	ErrorMessage string     `json:"error_message,omitempty"`
+	StartedAt    *time.Time `json:"started_at,omitempty"`
+	FinishedAt   *time.Time `json:"finished_at,omitempty"`
 }
 
 // Create handles POST /api/v1/backtests.
@@ -144,10 +158,15 @@ func (h *Handler) Create(c *gin.Context) {
 }
 
 // shouldRunInline returns true when the caller asks the API to run the job
-// synchronously. Defaults to false so the queued-worker path stays the
-// canonical execution mode once it ships.
+// synchronously. We honour both the legacy ?run=true (used by the
+// existing e2e harness and Create's inline branch) and the new
+// ?wait=true (used on POST /:id/run).
 func shouldRunInline(c *gin.Context) bool {
 	switch strings.ToLower(c.Query("run")) {
+	case "1", "true", "yes":
+		return true
+	}
+	switch strings.ToLower(c.Query("wait")) {
 	case "1", "true", "yes":
 		return true
 	}
@@ -169,17 +188,87 @@ func (h *Handler) Get(c *gin.Context) {
 }
 
 // Run handles POST /api/v1/backtests/:id/run.
+//
+// By default it Submits the job to the queue and returns 202 Accepted so
+// the client can poll status; if the caller passes ?wait=true the handler
+// runs the job synchronously and returns 200 with the report inline. The
+// synchronous path is preserved for the e2e regression harness and for
+// debugging; production clients should prefer the asynchronous shape.
 func (h *Handler) Run(c *gin.Context) {
 	id, ok := parseID(c)
 	if !ok {
 		return
 	}
-	res, err := h.svc.Run(c.Request.Context(), id)
+	if shouldRunInline(c) {
+		res, err := h.svc.Run(c.Request.Context(), id)
+		if err != nil {
+			writeMappedErr(c, err)
+			return
+		}
+		response.OK(c, runResponse{Job: res.Job, Report: res.Report})
+		return
+	}
+	job, err := h.svc.Submit(c.Request.Context(), id)
 	if err != nil {
 		writeMappedErr(c, err)
 		return
 	}
-	response.OK(c, runResponse{Job: res.Job, Report: res.Report})
+	c.JSON(http.StatusAccepted, gin.H{
+		"code":    0,
+		"message": "queued",
+		"data":    runResponse{Job: job},
+	})
+}
+
+// Cancel handles POST /api/v1/backtests/:id/cancel.
+func (h *Handler) Cancel(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.ShouldBindJSON(&body)
+	job, err := h.svc.Cancel(c.Request.Context(), id, body.Reason)
+	if err != nil {
+		writeMappedErr(c, err)
+		return
+	}
+	response.OK(c, runResponse{Job: job})
+}
+
+// GetStatus handles GET /api/v1/backtests/:id/status. It returns a
+// trimmed projection of the job aggregate so the polling frontend does
+// not have to download the full row on every tick.
+func (h *Handler) GetStatus(c *gin.Context) {
+	id, ok := parseID(c)
+	if !ok {
+		return
+	}
+	job, err := h.svc.Get(c.Request.Context(), id)
+	if err != nil {
+		writeMappedErr(c, err)
+		return
+	}
+	response.OK(c, statusView{
+		ID:           job.ID,
+		Status:       string(job.Status),
+		ErrorMessage: job.ErrorMessage,
+		StartedAt:    job.StartedAt,
+		FinishedAt:   job.FinishedAt,
+	})
+}
+
+// shouldWaitInline reports whether the caller asked the API to block on a
+// synchronous run via ?wait=true. We accept the legacy ?run=true alias
+// because both the e2e harness and the existing http_test rely on it.
+func shouldWaitInline(c *gin.Context) bool {
+	switch strings.ToLower(c.Query("wait")) {
+	case "1", "true", "yes":
+		return true
+	}
+	return false
 }
 
 // List handles GET /api/v1/backtests.
@@ -264,5 +353,3 @@ func parseInt64(s string) int64 {
 	return v
 }
 
-// silence imports that are kept around for the future async path.
-var _ = time.Second

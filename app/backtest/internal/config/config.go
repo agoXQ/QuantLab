@@ -18,6 +18,7 @@ type Config struct {
 	MarketData MarketDataConfig `json:",optional"`
 	Formula    FormulaConfig    `json:",optional"`
 	Engine     EngineConfig     `json:",optional"`
+	Queue      QueueConfig      `json:",optional"`
 }
 
 // PostgresConfig configures the Postgres connection used to persist jobs,
@@ -72,4 +73,27 @@ type FormulaConfig struct {
 type EngineConfig struct {
 	AnnualisationDays int     `json:",default=252"`
 	RiskFreeRate      float64 `json:",default=0"`
+}
+
+// QueueConfig controls the in-process async backtest pipeline. The MVP
+// ships an in-memory channel-backed queue; durable adapters (Kafka,
+// Redis Streams) will land alongside it without changing this surface.
+type QueueConfig struct {
+	// Enabled toggles the async submit path. When false the service
+	// still accepts inline ?run=true / ?wait=true synchronous calls but
+	// POST :id/run rejects with ErrQueueUnavailable so callers know to
+	// flip the flag (or move to a deployment with the worker stack).
+	Enabled bool `json:",default=true"`
+	// Workers is the number of goroutines draining the queue. Each
+	// worker runs one backtest at a time; tune this against the host's
+	// CPU and the typical job runtime.
+	Workers int `json:",default=2"`
+	// Buffer caps the number of queued jobs in memory; Submit blocks
+	// when the queue is saturated. Production deployments will replace
+	// this with a durable backend.
+	Buffer int `json:",default=256"`
+	// JobTimeoutSeconds caps the runtime of a single job. Zero disables
+	// the timeout; that is the safer default for the MVP because
+	// backtests can legitimately take several minutes.
+	JobTimeoutSeconds int `json:",default=0"`
 }

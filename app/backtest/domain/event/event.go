@@ -10,10 +10,12 @@ import (
 type EventType string
 
 const (
-	EventBacktestCreated  EventType = "BacktestCreated"
-	EventBacktestStarted  EventType = "BacktestStarted"
-	EventBacktestFinished EventType = "BacktestFinished"
-	EventBacktestFailed   EventType = "BacktestFailed"
+	EventBacktestCreated   EventType = "BacktestCreated"
+	EventBacktestQueued    EventType = "BacktestQueued"
+	EventBacktestStarted   EventType = "BacktestStarted"
+	EventBacktestFinished  EventType = "BacktestFinished"
+	EventBacktestFailed    EventType = "BacktestFailed"
+	EventBacktestCancelled EventType = "BacktestCancelled"
 )
 
 const (
@@ -65,6 +67,18 @@ type BacktestFinishedPayload struct {
 type BacktestFailedPayload struct {
 	JobID  int64  `json:"job_id"`
 	Reason string `json:"reason"`
+}
+
+// BacktestQueuedPayload is the payload for BacktestQueued, emitted the
+// moment a job is accepted by the queue and waiting for a worker.
+type BacktestQueuedPayload struct {
+	JobID int64 `json:"job_id"`
+}
+
+// BacktestCancelledPayload is the payload for BacktestCancelled.
+type BacktestCancelledPayload struct {
+	JobID  int64  `json:"job_id"`
+	Reason string `json:"reason,omitempty"`
 }
 
 // Publisher publishes Backtest events.

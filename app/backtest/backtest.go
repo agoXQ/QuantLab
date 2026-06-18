@@ -4,6 +4,9 @@ import (
 	"flag"
 	"fmt"
 	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/gin-gonic/gin"
 
@@ -40,6 +43,20 @@ func main() {
 		}
 	})
 	defer s.Stop()
+	defer ctx.Close()
+
+	// Listen for OS signals so we drain the worker pool before the
+	// process exits; ungraceful shutdowns leave QUEUED jobs that have
+	// to be reconciled at next boot.
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Println("shutdown signal received, draining workers...")
+		ctx.Close()
+		s.Stop()
+		os.Exit(0)
+	}()
 
 	go func() {
 		gin.SetMode(gin.ReleaseMode)

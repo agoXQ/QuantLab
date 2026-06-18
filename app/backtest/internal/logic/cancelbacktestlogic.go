@@ -23,8 +23,11 @@ func NewCancelBacktestLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Ca
 	}
 }
 
+// CancelBacktest delegates to the application Service so the gRPC and
+// HTTP surfaces share one cancellation contract.
 func (l *CancelBacktestLogic) CancelBacktest(in *pb.CancelBacktestRequest) (*pb.CancelBacktestResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if _, err := l.svcCtx.BacktestSvc.Cancel(l.ctx, in.JobId, ""); err != nil {
+		return nil, err
+	}
 	return &pb.CancelBacktestResponse{}, nil
 }

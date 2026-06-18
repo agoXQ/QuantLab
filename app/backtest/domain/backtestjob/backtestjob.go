@@ -115,6 +115,43 @@ func (j *BacktestJob) Validate() error {
 	return nil
 }
 
+// MarkQueued transitions the job into QUEUED. The transition is only valid
+// from CREATED (a freshly persisted job) or QUEUED itself (idempotent
+// re-submit). Terminal jobs cannot be re-queued; the API layer must
+// surface a 409 in that case so callers know to clone the job instead.
+func (j *BacktestJob) MarkQueued(now time.Time) error {
+	switch j.Status {
+	case valueobject.JobStatusCreated, valueobject.JobStatusQueued:
+		j.Status = valueobject.JobStatusQueued
+		j.ErrorMessage = ""
+		// StartedAt / FinishedAt are reset so a re-queued job does not
+		// inherit timestamps from a previous attempt.
+		j.StartedAt = nil
+		j.FinishedAt = nil
+		_ = now
+		return nil
+	default:
+		return bterr.ErrInvalidStateTransition
+	}
+}
+
+// MarkCancelled transitions the job into CANCELLED. Cancellation is only
+// allowed before completion: CREATED, QUEUED, RUNNING. Terminal jobs are
+// rejected with ErrJobNotCancellable so the caller can distinguish a
+// state-machine refusal from a missing-job 404.
+func (j *BacktestJob) MarkCancelled(now time.Time, reason string) error {
+	switch j.Status {
+	case valueobject.JobStatusCreated, valueobject.JobStatusQueued, valueobject.JobStatusRunning:
+		j.Status = valueobject.JobStatusCancelled
+		j.ErrorMessage = reason
+		t := now
+		j.FinishedAt = &t
+		return nil
+	default:
+		return bterr.ErrJobNotCancellable
+	}
+}
+
 // MarkRunning transitions the job into RUNNING. Returns an error if the
 // current status is incompatible with that move.
 func (j *BacktestJob) MarkRunning(now time.Time) error {

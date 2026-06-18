@@ -34,6 +34,19 @@ var (
 	ErrReportNotFound = New(40021, "backtest report not found")
 )
 
+// 2xxxx — Conflict / state-machine refusals. The HTTP layer renders these
+// as 409 Conflict because they describe a legitimate request that cannot
+// be served from the job's current status (already finished, cancelled, ...).
+var (
+	ErrJobNotCancellable = New(20020, "backtest job is not cancellable in the current status")
+	ErrJobAlreadyTerminal = New(20021, "backtest job is already in a terminal status")
+)
+
+// 5xxxx — System errors (continued).
+var (
+	ErrQueueUnavailable = New(50022, "backtest job queue is not configured")
+)
+
 // 1xxxx — Validation errors.
 var (
 	ErrInvalidJob              = New(10020, "invalid backtest job")

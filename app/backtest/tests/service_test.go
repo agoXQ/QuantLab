@@ -14,8 +14,11 @@ import (
 	infraEvent "github.com/agoXQ/QuantLab/app/backtest/infrastructure/event"
 	infraMarketData "github.com/agoXQ/QuantLab/app/backtest/infrastructure/marketdata"
 	infraMatching "github.com/agoXQ/QuantLab/app/backtest/infrastructure/matching"
+	infraMemQueue "github.com/agoXQ/QuantLab/app/backtest/infrastructure/queue/memory"
 	infraMemory "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/memory"
 	infraStrategy "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategy"
+	infraWorker "github.com/agoXQ/QuantLab/app/backtest/infrastructure/worker"
+	domqueue "github.com/agoXQ/QuantLab/app/backtest/domain/queue"
 
 	appFormula "github.com/agoXQ/QuantLab/app/formula/application/formula"
 	formulaDataport "github.com/agoXQ/QuantLab/app/formula/infrastructure/dataport"
@@ -39,6 +42,10 @@ type fixture struct {
 	formula  *formulaDataport.InMemory
 	executor domexec.StrategyExecutor
 	clock    time.Time
+	deps     appBacktest.Dependencies
+	// queue / pool are populated by enableAsync and torn down by t.Cleanup.
+	queue domqueue.Queue
+	pool  *infraWorker.Pool
 }
 
 func newFixture(t *testing.T) *fixture {
@@ -72,7 +79,7 @@ func newFixture(t *testing.T) *fixture {
 		Now:            now,
 	})
 
-	svc := appBacktest.NewService(appBacktest.Dependencies{
+	deps := appBacktest.Dependencies{
 		Jobs:       infraMemory.NewJobRepository(),
 		Orders:     infraMemory.NewOrderRepository(),
 		Trades:     infraMemory.NewTradeRepository(),
@@ -83,9 +90,49 @@ func newFixture(t *testing.T) *fixture {
 		MarketData: provider,
 		Publisher:  publisher,
 		Clock:      now,
-	})
+	}
+	svc := appBacktest.NewService(deps)
 
-	return &fixture{svc: svc, provider: provider, formula: formulaPort, executor: executor, clock: clock}
+	fx := &fixture{svc: svc, provider: provider, formula: formulaPort, executor: executor, clock: clock, deps: deps}
+	t.Cleanup(func() { fx.shutdown() })
+	return fx
+}
+
+// enableAsync attaches a queue + worker pool to the fixture so tests can
+// exercise Submit / Cancel / RunQueued. The same repositories survive
+// across calls because we hand the existing Dependencies to the new
+// service instance, which keeps any jobs created before enableAsync
+// visible to the worker.
+func (fx *fixture) enableAsync(t *testing.T, workers int) {
+	t.Helper()
+	q := infraMemQueue.New(8)
+	deps := fx.deps
+	deps.Queue = q
+	fx.svc = appBacktest.NewService(deps)
+	pool := infraWorker.New(q, asyncRunner{svc: fx.svc}, infraWorker.Config{Workers: workers})
+	pool.Start(context.Background())
+	fx.queue = q
+	fx.pool = pool
+}
+
+// asyncRunner adapts the application Service to the worker pool's Runner
+// port without forcing the application package to import infrastructure.
+type asyncRunner struct {
+	svc appBacktest.Service
+}
+
+func (a asyncRunner) RunQueued(ctx context.Context, jobID int64) error {
+	return a.svc.RunQueued(ctx, jobID)
+}
+
+// shutdown stops the worker pool / queue if the test enabled them.
+func (fx *fixture) shutdown() {
+	if fx.pool != nil {
+		fx.pool.Stop()
+	}
+	if fx.queue != nil {
+		_ = fx.queue.Close()
+	}
 }
 
 // daily builds n consecutive UTC trading-day timestamps starting at start.

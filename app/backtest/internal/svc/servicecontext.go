@@ -25,9 +25,13 @@ import (
 	infraEvent "github.com/agoXQ/QuantLab/app/backtest/infrastructure/event"
 	infraMarketData "github.com/agoXQ/QuantLab/app/backtest/infrastructure/marketdata"
 	infraMatching "github.com/agoXQ/QuantLab/app/backtest/infrastructure/matching"
+	infraMemQueue "github.com/agoXQ/QuantLab/app/backtest/infrastructure/queue/memory"
 	infraMemory "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/memory"
 	infraPg "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/postgres"
 	infraStrategy "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategy"
+	infraWorker "github.com/agoXQ/QuantLab/app/backtest/infrastructure/worker"
+
+	domqueue "github.com/agoXQ/QuantLab/app/backtest/domain/queue"
 
 	appFormula "github.com/agoXQ/QuantLab/app/formula/application/formula"
 	domainEval "github.com/agoXQ/QuantLab/app/formula/domain/evaluator"
@@ -61,6 +65,11 @@ type ServiceContext struct {
 	// MarketDataDB is the *sql.DB connected to the Market Data database
 	// when the platform stack is wired; nil when running in-memory.
 	MarketDataDB *sql.DB
+	// Queue / Workers carry the async pipeline. They are non-nil when
+	// QueueConfig.Enabled is true; the Close hook below drains them
+	// during graceful shutdown.
+	Queue   domqueue.Queue
+	Workers *infraWorker.Pool
 }
 
 // NewServiceContext wires the dependency graph.
@@ -108,6 +117,14 @@ func NewServiceContext(c config.Config) *ServiceContext {
 
 	jobs, orders, trades, portfolios, reports, db := buildRepositories(c)
 
+	var (
+		queueImpl domqueue.Queue
+		pool      *infraWorker.Pool
+	)
+	if c.Queue.Enabled {
+		queueImpl = infraMemQueue.New(c.Queue.Buffer)
+	}
+
 	svc := appBacktest.NewService(appBacktest.Dependencies{
 		Jobs:       jobs,
 		Orders:     orders,
@@ -118,8 +135,20 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		Matching:   matching,
 		MarketData: marketProvider,
 		Publisher:  publisher,
+		Queue:      queueImpl,
 		Clock:      time.Now,
 	})
+
+	if queueImpl != nil {
+		pool = infraWorker.New(queueImpl, runnerAdapter{svc: svc}, infraWorker.Config{
+			Workers:    c.Queue.Workers,
+			JobTimeout: time.Duration(c.Queue.JobTimeoutSeconds) * time.Second,
+		})
+		pool.Start(context.Background())
+		log.Printf("[backtest] async pipeline started: workers=%d buffer=%d", c.Queue.Workers, c.Queue.Buffer)
+	} else {
+		log.Printf("[backtest] async pipeline disabled; only inline ?run=true is available")
+	}
 
 	return &ServiceContext{
 		Config:         c,
@@ -129,7 +158,42 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		Executor:       executor,
 		DB:             db,
 		MarketDataDB:   stack.db,
+		Queue:          queueImpl,
+		Workers:        pool,
 	}
+}
+
+// Close drains the worker pool and closes the queue. Safe to call once;
+// subsequent invocations are no-ops because the underlying queue and
+// pool guard against double-close.
+func (sc *ServiceContext) Close() {
+	if sc == nil {
+		return
+	}
+	if sc.Workers != nil {
+		sc.Workers.Stop()
+	}
+	if sc.Queue != nil {
+		_ = sc.Queue.Close()
+	}
+	if sc.DB != nil {
+		_ = sc.DB.Close()
+	}
+	if sc.MarketDataDB != nil {
+		_ = sc.MarketDataDB.Close()
+	}
+}
+
+// runnerAdapter bridges the application Service to the Pool's Runner
+// port without forcing the application package to depend on
+// infrastructure/worker. The infrastructure layer takes the import; the
+// application keeps the same surface area.
+type runnerAdapter struct {
+	svc appBacktest.Service
+}
+
+func (r runnerAdapter) RunQueued(ctx context.Context, jobID int64) error {
+	return r.svc.RunQueued(ctx, jobID)
 }
 
 

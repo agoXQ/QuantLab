@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -17,14 +18,16 @@ import (
 	dommarket "github.com/agoXQ/QuantLab/app/backtest/domain/marketdata"
 	domorder "github.com/agoXQ/QuantLab/app/backtest/domain/order"
 	domportfolio "github.com/agoXQ/QuantLab/app/backtest/domain/portfolio"
+	domqueue "github.com/agoXQ/QuantLab/app/backtest/domain/queue"
 	domtrade "github.com/agoXQ/QuantLab/app/backtest/domain/trade"
 	"github.com/agoXQ/QuantLab/app/backtest/domain/valueobject"
 )
 
-// Run executes the job synchronously. The MVP keeps execution in-process
-// rather than going through Kafka so the call site (HTTP handler) gets
-// immediate feedback and can return a job + report in one round trip.
-// The async / queued path is the next iteration once the worker pool lands.
+// Run executes the job synchronously in the calling goroutine. The
+// inline ?run=true HTTP path and the e2e regression harness rely on this
+// shape so they can return a job + report in one round trip; production
+// traffic should go through Submit and let the worker pool drive
+// execution. Both paths share executeJob below.
 func (s *service) Run(ctx context.Context, jobID int64) (*RunResult, error) {
 	job, err := s.deps.Jobs.Get(ctx, jobID)
 	if err != nil {
@@ -36,6 +39,94 @@ func (s *service) Run(ctx context.Context, jobID int64) (*RunResult, error) {
 		// recomputing.
 		return s.collectRunResult(ctx, job)
 	}
+	result, runErr := s.executeJob(ctx, job)
+	if runErr != nil {
+		return nil, runErr
+	}
+	return result, nil
+}
+
+// Submit transitions the job into QUEUED and hands it off to the queue.
+// The job stays in QUEUED until a worker picks it up; the HTTP layer
+// returns a 202 with the job snapshot so the caller can poll status.
+func (s *service) Submit(ctx context.Context, jobID int64) (*backtestjob.BacktestJob, error) {
+	if s.deps.Queue == nil {
+		return nil, bterr.ErrQueueUnavailable
+	}
+	job, err := s.deps.Jobs.Get(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if job.Status.IsTerminal() {
+		// Re-submitting a finished or cancelled job is a 409 Conflict;
+		// callers should clone the job instead.
+		return nil, bterr.ErrJobAlreadyTerminal
+	}
+	if err := job.MarkQueued(s.deps.Clock()); err != nil {
+		return nil, err
+	}
+	if err := s.deps.Jobs.Update(ctx, job); err != nil {
+		return nil, err
+	}
+	if err := s.deps.Queue.Enqueue(ctx, domqueue.Job{ID: job.ID}); err != nil {
+		// Roll back the QUEUED transition so the job does not sit there
+		// forever when the queue refused the handoff. We mark it FAILED
+		// and surface the original error to the caller.
+		_ = job.MarkFailed(s.deps.Clock(), "enqueue failed: "+err.Error())
+		_ = s.deps.Jobs.Update(ctx, job)
+		return nil, err
+	}
+	s.publish(ctx, domevent.EventBacktestQueued, job.ID, domevent.BacktestQueuedPayload{JobID: job.ID})
+	return job, nil
+}
+
+// Cancel flips a non-terminal job to CANCELLED. A worker that already
+// owns the job stops on its next status read; queued jobs are simply
+// drained when a worker picks them up because RunQueued re-loads the row
+// before doing any work.
+func (s *service) Cancel(ctx context.Context, jobID int64, reason string) (*backtestjob.BacktestJob, error) {
+	job, err := s.deps.Jobs.Get(ctx, jobID)
+	if err != nil {
+		return nil, err
+	}
+	if err := job.MarkCancelled(s.deps.Clock(), reason); err != nil {
+		return nil, err
+	}
+	if err := s.deps.Jobs.Update(ctx, job); err != nil {
+		return nil, err
+	}
+	s.publish(ctx, domevent.EventBacktestCancelled, job.ID, domevent.BacktestCancelledPayload{
+		JobID:  job.ID,
+		Reason: reason,
+	})
+	return job, nil
+}
+
+// RunQueued is the worker entry point. It re-checks the latest status
+// (so a Cancel that landed after enqueue is honoured), then runs the
+// same executeJob helper Run uses. Failures are captured on the job row
+// rather than returned upstream because the worker has nowhere to send
+// them.
+func (s *service) RunQueued(ctx context.Context, jobID int64) error {
+	job, err := s.deps.Jobs.Get(ctx, jobID)
+	if err != nil {
+		return err
+	}
+	if job.Status.IsTerminal() {
+		// Cancelled or already completed (duplicate delivery): nothing
+		// to do, log via the publisher / caller.
+		return nil
+	}
+	if _, err := s.executeJob(ctx, job); err != nil {
+		return err
+	}
+	return nil
+}
+
+// executeJob is the shared body for synchronous Run and async RunQueued.
+// It owns the state-machine writes (MarkRunning -> MarkCompleted /
+// MarkFailed) and the matching events so callers do not have to.
+func (s *service) executeJob(ctx context.Context, job *backtestjob.BacktestJob) (*RunResult, error) {
 	now := s.deps.Clock()
 	if err := job.MarkRunning(now); err != nil {
 		return nil, err
@@ -47,6 +138,19 @@ func (s *service) Run(ctx context.Context, jobID int64) (*RunResult, error) {
 
 	result, runErr := s.runJob(ctx, job)
 	if runErr != nil {
+		// A cancellation observed mid-loop is reported as a clean stop:
+		// the row already says CANCELLED (Cancel wrote it), so we just
+		// re-load to surface the latest snapshot and emit the event.
+		if errors.Is(runErr, errJobCancelled) {
+			if cur, err := s.deps.Jobs.Get(ctx, job.ID); err == nil {
+				job = cur
+			}
+			s.publish(ctx, domevent.EventBacktestCancelled, job.ID, domevent.BacktestCancelledPayload{
+				JobID:  job.ID,
+				Reason: job.ErrorMessage,
+			})
+			return nil, runErr
+		}
 		_ = job.MarkFailed(s.deps.Clock(), runErr.Error())
 		_ = s.deps.Jobs.Update(ctx, job)
 		s.publish(ctx, domevent.EventBacktestFailed, job.ID, domevent.BacktestFailedPayload{
@@ -94,6 +198,11 @@ func (s *service) collectRunResult(ctx context.Context, job *backtestjob.Backtes
 	return &RunResult{Job: job, Report: rep, Trades: trades, Orders: orders, Snapshots: snapshots}, nil
 }
 
+// errJobCancelled is the internal sentinel used to abort runJob when an
+// operator cancels a running job. It is converted into a CANCELLED row by
+// executeJob and never surfaces to API callers verbatim.
+var errJobCancelled = errors.New("backtest job cancelled")
+
 // runJob is the actual day-by-day replay loop.
 //
 // The structure mirrors the TD's "Market Replay Engine" section: load
@@ -140,6 +249,15 @@ func (s *service) runJob(ctx context.Context, job *backtestjob.BacktestJob) (*Ru
 	for i, day := range calendar {
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		// Honour a cancellation that landed via the API while the job
+		// was running. We re-read the row sparingly (every 16 trading
+		// days, ~3 weeks) to keep the hot path cheap; the worst-case
+		// latency on cancel is well below the typical job runtime.
+		if i > 0 && i%16 == 0 {
+			if cur, err := s.deps.Jobs.Get(ctx, job.ID); err == nil && cur.Status == valueobject.JobStatusCancelled {
+				return nil, errJobCancelled
+			}
 		}
 		// Step 1: match orders queued the previous day at this day's open.
 		if len(pendingOrders) > 0 {
