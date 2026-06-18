@@ -58,7 +58,11 @@ func main() {
 		router.Use(gin.Recovery())
 
 		apiGroup := router.Group("/api/v1/formula")
-		handler := httpHandler.NewHandler(ctx.FormulaService)
+		handler := httpHandler.NewHandlerWithEvaluator(
+			ctx.FormulaService,
+			ctx.EvaluatorService,
+			ctx.DataPort,
+		)
 		handler.RegisterRoutes(apiGroup)
 
 		addr := fmt.Sprintf("0.0.0.0:%d", c.HttpPort)

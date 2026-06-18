@@ -3,20 +3,41 @@ package http
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
 	"github.com/agoXQ/QuantLab/app/formula/application/formula"
+	domainCompiler "github.com/agoXQ/QuantLab/app/formula/domain/compiler"
+	domainEval "github.com/agoXQ/QuantLab/app/formula/domain/evaluator"
 )
 
 // Handler exposes the Formula Service over HTTP.
+//
+// Evaluate is optional: when the EvaluatorService and DataPort are nil, the
+// /evaluate route is not registered. This keeps the handler usable from the
+// minimal HTTP test fixtures that only need compile/validate plumbing.
 type Handler struct {
-	svc formula.Service
+	svc       formula.Service
+	evaluator formula.EvaluatorService
+	dataPort  domainEval.DataPort
 }
 
-// NewHandler creates a new HTTP handler.
+// NewHandler creates a new HTTP handler with only the compile-side surface.
 func NewHandler(svc formula.Service) *Handler {
 	return &Handler{svc: svc}
+}
+
+// NewHandlerWithEvaluator wires the evaluation surface on top of the
+// compile-side handler. The evaluator and dataPort are kept as separate
+// dependencies so callers can swap the data port (in-memory vs repository
+// vs gRPC) without rebuilding the EvaluatorService chain.
+func NewHandlerWithEvaluator(
+	svc formula.Service,
+	evaluator formula.EvaluatorService,
+	dataPort domainEval.DataPort,
+) *Handler {
+	return &Handler{svc: svc, evaluator: evaluator, dataPort: dataPort}
 }
 
 // RegisterRoutes registers all formula API routes on the given gin engine.
@@ -26,6 +47,9 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/ast", h.GetAST)
 	rg.GET("/functions", h.ListFunctions)
 	rg.GET("/functions/:name", h.GetFunction)
+	if h.evaluator != nil && h.dataPort != nil {
+		rg.POST("/evaluate", h.Evaluate)
+	}
 }
 
 // --- Request / Response types ---
@@ -71,6 +95,32 @@ type listFunctionsResponse struct {
 
 type getFunctionResponse struct {
 	Function *functionDefinition `json:"function,omitempty"`
+}
+
+type evaluateRequest struct {
+	Formula      string   `json:"formula" binding:"required"`
+	Universe     []string `json:"universe"`
+	AsOfDate     string   `json:"as_of_date"`
+	LookbackBars int      `json:"lookback_bars"`
+	DataVersion  string   `json:"data_version"`
+}
+
+type rankingItem struct {
+	StockCode string  `json:"stock_code"`
+	Score     float64 `json:"score"`
+}
+
+type valueItem struct {
+	StockCode string  `json:"stock_code"`
+	Value     float64 `json:"value"`
+}
+
+type evaluateResponse struct {
+	FormulaHash string        `json:"formula_hash"`
+	PlanType    string        `json:"plan_type"`
+	Selection   []string      `json:"selection,omitempty"`
+	Ranking     []rankingItem `json:"ranking,omitempty"`
+	Values      []valueItem   `json:"values,omitempty"`
 }
 
 // --- Handlers ---
@@ -202,4 +252,95 @@ func (h *Handler) GetFunction(c *gin.Context) {
 			Params:      params,
 		},
 	})
+}
+
+// Evaluate handles POST /api/v1/formula/evaluate.
+//
+// The request runs through the same Compile pipeline (cache / log / event /
+// metrics) as /compile, then dispatches the produced plan into the AST
+// evaluator using the data port wired at boot. Universe is required so the
+// evaluator can materialise a deterministic result; AsOfDate defaults to
+// "now" when omitted, matching the application-layer EvaluatorService.
+func (h *Handler) Evaluate(c *gin.Context) {
+	if h.evaluator == nil || h.dataPort == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "evaluator not configured"})
+		return
+	}
+
+	var req evaluateRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	if len(req.Universe) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "universe is required"})
+		return
+	}
+
+	asOf := time.Now()
+	if req.AsOfDate != "" {
+		parsed, err := parseAsOfDate(req.AsOfDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid as_of_date: " + err.Error()})
+			return
+		}
+		asOf = parsed
+	}
+
+	result, err := h.evaluator.Evaluate(c.Request.Context(), formula.EvaluateRequest{
+		Formula:      req.Formula,
+		Universe:     req.Universe,
+		AsOfDate:     asOf,
+		LookbackBars: req.LookbackBars,
+		DataVersion:  req.DataVersion,
+		DataPort:     h.dataPort,
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, buildEvaluateResponse(result))
+}
+
+// parseAsOfDate accepts the two shapes the rest of the platform uses: a
+// date-only "2006-01-02" string for cross-section requests, and full
+// RFC3339 for replay / audit traffic. Anything else surfaces as a 400 to
+// the caller rather than silently defaulting to "now".
+func parseAsOfDate(raw string) (time.Time, error) {
+	if t, err := time.Parse("2006-01-02", raw); err == nil {
+		return t, nil
+	}
+	return time.Parse(time.RFC3339, raw)
+}
+
+func buildEvaluateResponse(res *formula.EvaluateResult) evaluateResponse {
+	resp := evaluateResponse{FormulaHash: res.FormulaHash}
+	if res.Result == nil {
+		return resp
+	}
+	resp.PlanType = string(res.Result.PlanType)
+	switch res.Result.PlanType {
+	case domainCompiler.PlanTypeFilter, domainCompiler.PlanTypeSignal:
+		if res.Result.Selection != nil {
+			resp.Selection = res.Result.Selection.StockCodes
+		}
+	case domainCompiler.PlanTypeSort:
+		if res.Result.Ranking != nil {
+			items := make([]rankingItem, len(res.Result.Ranking.StockCodes))
+			for i, code := range res.Result.Ranking.StockCodes {
+				items[i] = rankingItem{StockCode: code, Score: res.Result.Ranking.Scores[i]}
+			}
+			resp.Ranking = items
+		}
+	case domainCompiler.PlanTypeValue:
+		if res.Result.Values != nil {
+			items := make([]valueItem, len(res.Result.Values.StockCodes))
+			for i, code := range res.Result.Values.StockCodes {
+				items[i] = valueItem{StockCode: code, Value: res.Result.Values.Values[i]}
+			}
+			resp.Values = items
+		}
+	}
+	return resp
 }
