@@ -53,7 +53,7 @@ func (p *Provider) FetchFinancials(ctx context.Context, q provider.FinancialQuer
 
 func (p *Provider) fetchIncome(ctx context.Context, tsCode string, q provider.FinancialQuery) (map[string]*financial.FinancialStatement, error) {
 	params := financialParams(tsCode, q)
-	resp, err := p.client.Call(ctx, "income", params, "ts_code,end_date,report_type,revenue,n_income")
+	resp, err := p.client.Call(ctx, "income", params, "ts_code,end_date,report_type,revenue,n_income,basic_eps,diluted_eps")
 	if err != nil {
 		return nil, err
 	}
@@ -66,6 +66,8 @@ func (p *Provider) fetchIncome(ctx context.Context, tsCode string, q provider.Fi
 			ReportType: mapReportType(cellString(row[idx("report_type")]), q.ReportType),
 			Revenue:    cellFloat(row[idx("revenue")]),
 			NetProfit:  cellFloat(row[idx("n_income")]),
+			BasicEPS:   cellFloat(row[idx("basic_eps")]),
+			DilutedEPS: cellFloat(row[idx("diluted_eps")]),
 		}
 		out[fs.ReportDate.Format("20060102")] = fs
 	}

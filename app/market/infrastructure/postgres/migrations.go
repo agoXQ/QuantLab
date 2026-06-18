@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS financial_statement (
     total_assets      DECIMAL(20,4),
     total_liabilities DECIMAL(20,4),
     net_assets        DECIMAL(20,4),
+    basic_eps         DECIMAL(20,6),
+    diluted_eps       DECIMAL(20,6),
     operating_cash_flow DECIMAL(20,4),
     investing_cash_flow DECIMAL(20,4),
     financing_cash_flow DECIMAL(20,4),
@@ -123,12 +125,28 @@ var hypertableStmts = []string{
 	`SELECT create_hypertable('index_bar',           'trade_date', if_not_exists => TRUE);`,
 }
 
+// idempotentAlters carries forward column additions on databases that
+// were created before the column existed. The MVP migration story is
+// "EnsureSchema runs at boot"; rather than ship a separate migration
+// runner we keep these ALTERs alongside the CREATEs so old deployments
+// pick up new fields automatically. Each statement uses IF NOT EXISTS
+// so reruns are no-ops.
+var idempotentAlters = []string{
+	`ALTER TABLE financial_statement ADD COLUMN IF NOT EXISTS basic_eps   DECIMAL(20,6);`,
+	`ALTER TABLE financial_statement ADD COLUMN IF NOT EXISTS diluted_eps DECIMAL(20,6);`,
+}
+
 // EnsureSchema creates the market schema if it is missing and, when the
 // TimescaleDB extension is available, converts time-series tables into
 // hypertables. The function is safe to call repeatedly.
 func EnsureSchema(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx, schemaSQL); err != nil {
 		return fmt.Errorf("apply market schema: %w", err)
+	}
+	for _, stmt := range idempotentAlters {
+		if _, err := db.ExecContext(ctx, stmt); err != nil {
+			return fmt.Errorf("apply alter: %w", err)
+		}
 	}
 	for _, stmt := range hypertableStmts {
 		if _, err := db.ExecContext(ctx, stmt); err != nil {

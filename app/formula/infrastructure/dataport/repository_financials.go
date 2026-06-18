@@ -244,16 +244,17 @@ func latestFactorValues(facs []*factor.Factor) map[string]float64 {
 //
 // Statement-derived formulas:
 //
-//	ROE            = NetProfit / NetAssets
-//	ROA            = NetProfit / TotalAssets
-//	EPS            = NetProfit / 1e8       (placeholder; share count missing)
+//	ROE            = NetProfit / NetAssets * 100        (percent)
+//	ROA            = NetProfit / TotalAssets * 100      (percent)
+//	EPS            = BasicEPS, falling back to DilutedEPS
 //	RevenueGrowth  = (Revenue   - PrevRevenue)   / |PrevRevenue|
 //	ProfitGrowth   = (NetProfit - PrevNetProfit) / |PrevNetProfit|
 //
-// EPS is only an approximation: the financial_statement table does not yet
-// store outstanding share count, so we expose NetProfit normalised to
-// hundred-million units (亿元), which preserves ordering. A schema upgrade
-// will replace this placeholder with the correct calculation.
+// EPS used to be a NetProfit / 1e8 placeholder; the schema now carries the
+// issuer-reported basic and diluted EPS, so we surface those directly.
+// When neither value is present (older rows that pre-date the columns)
+// the metric is omitted from the output and the evaluator substitutes
+// NaN, matching the behaviour of any other missing field.
 func deriveStatementMetrics(stmts []*financial.FinancialStatement) map[string]float64 {
 	if len(stmts) == 0 {
 		return nil
@@ -267,7 +268,9 @@ func deriveStatementMetrics(stmts []*financial.FinancialStatement) map[string]fl
 	if curr.TotalAssets != 0 {
 		out["ROA"] = curr.NetProfit / curr.TotalAssets * 100
 	}
-	out["EPS"] = curr.NetProfit / 1e8
+	if eps, ok := pickEPS(curr); ok {
+		out["EPS"] = eps
+	}
 
 	if len(stmts) >= 2 {
 		prev := stmts[1]
@@ -281,6 +284,26 @@ func deriveStatementMetrics(stmts []*financial.FinancialStatement) map[string]fl
 		}
 	}
 	return out
+}
+
+
+// pickEPS returns the most authoritative earnings-per-share value the
+// statement carries. We prefer the basic EPS reported by the issuer and
+// fall back to diluted EPS so a partially populated row still yields a
+// usable metric. Both values may be zero when the upstream report is
+// older than the schema upgrade; in that case the second return value is
+// false and the caller drops the EPS key entirely.
+func pickEPS(s *financial.FinancialStatement) (float64, bool) {
+	if s == nil {
+		return 0, false
+	}
+	if s.BasicEPS != 0 {
+		return s.BasicEPS, true
+	}
+	if s.DilutedEPS != 0 {
+		return s.DilutedEPS, true
+	}
+	return 0, false
 }
 
 func absFloat(v float64) float64 {

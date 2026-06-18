@@ -244,28 +244,32 @@ func TestRepositoryDataPort_DerivesROEAndROAFromStatements(t *testing.T) {
 	asOf := time.Date(2024, 6, 30, 0, 0, 0, 0, time.UTC)
 	fins.seed("A", []*financial.FinancialStatement{
 		{
-			StockCode:  "A",
-			ReportDate: time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC),
-			ReportType: valueobject.ReportTTM,
-			Revenue:    220,
-			NetProfit:  20,
-			NetAssets:  100,
+			StockCode:   "A",
+			ReportDate:  time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC),
+			ReportType:  valueobject.ReportTTM,
+			Revenue:     220,
+			NetProfit:   20,
+			NetAssets:   100,
 			TotalAssets: 200,
+			BasicEPS:    1.25,
+			DilutedEPS:  1.20,
 		},
 		{
-			StockCode:  "A",
-			ReportDate: time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
-			ReportType: valueobject.ReportTTM,
-			Revenue:    200,
-			NetProfit:  15,
-			NetAssets:  90,
+			StockCode:   "A",
+			ReportDate:  time.Date(2023, 12, 31, 0, 0, 0, 0, time.UTC),
+			ReportType:  valueobject.ReportTTM,
+			Revenue:     200,
+			NetProfit:   15,
+			NetAssets:   90,
 			TotalAssets: 180,
+			BasicEPS:    0.95,
+			DilutedEPS:  0.90,
 		},
 	})
 
 	out, err := port.LoadFinancialsLatest(context.Background(), domainEval.FinancialsRequest{
 		StockCodes: []string{"A"},
-		Metrics:    []string{"ROE", "ROA", "REVENUEGROWTH", "PROFITGROWTH"},
+		Metrics:    []string{"ROE", "ROA", "EPS", "REVENUEGROWTH", "PROFITGROWTH"},
 		AsOfDate:   asOf,
 	})
 	if err != nil {
@@ -278,11 +282,52 @@ func TestRepositoryDataPort_DerivesROEAndROAFromStatements(t *testing.T) {
 	if metrics["ROA"] != 10 {
 		t.Errorf("ROA = %v, want 10", metrics["ROA"])
 	}
+	if metrics["EPS"] != 1.25 {
+		t.Errorf("EPS = %v, want 1.25 (basic_eps from latest statement)", metrics["EPS"])
+	}
 	if v := metrics["REVENUEGROWTH"]; v <= 0 {
 		t.Errorf("REVENUEGROWTH = %v, expected positive", v)
 	}
 	if v := metrics["PROFITGROWTH"]; v <= 0 {
 		t.Errorf("PROFITGROWTH = %v, expected positive", v)
+	}
+}
+
+// TestRepositoryDataPort_EPSFallsBackToDilutedAndOmitsWhenAbsent locks in
+// the statement-priority story: basic EPS wins, diluted is the fallback,
+// and if both are zero we drop the EPS metric so the evaluator can
+// substitute NaN instead of treating zero as a real reading.
+func TestRepositoryDataPort_EPSFallsBackToDilutedAndOmitsWhenAbsent(t *testing.T) {
+	port, _, fins, _ := newRepoPort(t)
+	asOf := time.Date(2024, 6, 30, 0, 0, 0, 0, time.UTC)
+
+	fins.seed("DILUTED", []*financial.FinancialStatement{{
+		StockCode:  "DILUTED",
+		ReportDate: time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC),
+		ReportType: valueobject.ReportTTM,
+		NetProfit:  9,
+		DilutedEPS: 0.42,
+	}})
+	fins.seed("MISSING", []*financial.FinancialStatement{{
+		StockCode:  "MISSING",
+		ReportDate: time.Date(2024, 3, 31, 0, 0, 0, 0, time.UTC),
+		ReportType: valueobject.ReportTTM,
+		NetProfit:  9,
+	}})
+
+	out, err := port.LoadFinancialsLatest(context.Background(), domainEval.FinancialsRequest{
+		StockCodes: []string{"DILUTED", "MISSING"},
+		Metrics:    []string{"EPS"},
+		AsOfDate:   asOf,
+	})
+	if err != nil {
+		t.Fatalf("LoadFinancialsLatest: %v", err)
+	}
+	if got := out["DILUTED"]["EPS"]; got != 0.42 {
+		t.Errorf("DILUTED EPS = %v, want 0.42", got)
+	}
+	if _, ok := out["MISSING"]["EPS"]; ok {
+		t.Errorf("MISSING should omit EPS, got %v", out["MISSING"])
 	}
 }
 
