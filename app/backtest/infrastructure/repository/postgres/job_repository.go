@@ -38,11 +38,13 @@ func (r *JobRepository) Create(ctx context.Context, job *backtestjob.BacktestJob
 		INSERT INTO backtest_job (
 			user_id, strategy_id, version_id, name, formula, universe,
 			benchmark, data_version, initial_capital, start_date, end_date,
-			status, error_message, config, created_at, started_at, finished_at
+			status, error_message, config, created_at, started_at, finished_at,
+			progress
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
 			$7, $8, $9, $10, $11,
-			$12, $13, $14, $15, $16, $17
+			$12, $13, $14, $15, $16, $17,
+			$18
 		) RETURNING id`
 	var id int64
 	err = r.db.QueryRowContext(ctx, stmt,
@@ -63,6 +65,7 @@ func (r *JobRepository) Create(ctx context.Context, job *backtestjob.BacktestJob
 		job.CreatedAt,
 		job.StartedAt,
 		job.FinishedAt,
+		job.Progress,
 	).Scan(&id)
 	if err != nil {
 		return fmt.Errorf("insert backtest_job: %w", err)
@@ -88,7 +91,8 @@ func (r *JobRepository) Update(ctx context.Context, job *backtestjob.BacktestJob
 			error_message = $3,
 			config        = $4,
 			started_at    = $5,
-			finished_at   = $6
+			finished_at   = $6,
+			progress      = $7
 		WHERE id = $1`
 	res, err := r.db.ExecContext(ctx, stmt,
 		job.ID,
@@ -97,6 +101,7 @@ func (r *JobRepository) Update(ctx context.Context, job *backtestjob.BacktestJob
 		cfgJSON,
 		job.StartedAt,
 		job.FinishedAt,
+		job.Progress,
 	)
 	if err != nil {
 		return fmt.Errorf("update backtest_job: %w", err)
@@ -116,7 +121,7 @@ func (r *JobRepository) Get(ctx context.Context, id int64) (*backtestjob.Backtes
 		       COALESCE(benchmark, ''), COALESCE(data_version, ''),
 		       initial_capital, start_date, end_date,
 		       status, COALESCE(error_message, ''), config,
-		       created_at, started_at, finished_at
+		       created_at, started_at, finished_at, COALESCE(progress, 0)
 		FROM backtest_job WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, q, id)
 	job, err := scanJob(row)
@@ -153,7 +158,7 @@ func (r *JobRepository) List(ctx context.Context, q backtestjob.ListQuery) ([]*b
 		       COALESCE(benchmark, ''), COALESCE(data_version, ''),
 		       initial_capital, start_date, end_date,
 		       status, COALESCE(error_message, ''), config,
-		       created_at, started_at, finished_at
+		       created_at, started_at, finished_at, COALESCE(progress, 0)
 		FROM backtest_job
 		WHERE %s
 		ORDER BY id DESC
@@ -197,6 +202,7 @@ func scanJob(row scannable) (*backtestjob.BacktestJob, error) {
 		&job.InitialCapital, &job.Range.Start, &job.Range.End,
 		&statusStr, &job.ErrorMessage, &cfgJSON,
 		&job.CreatedAt, &startedAt, &finishedAt,
+		&job.Progress,
 	)
 	if err != nil {
 		return nil, err

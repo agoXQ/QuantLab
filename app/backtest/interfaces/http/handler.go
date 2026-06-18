@@ -86,6 +86,7 @@ type runResponse struct {
 type statusView struct {
 	ID           int64      `json:"id"`
 	Status       string     `json:"status"`
+	Progress     float64    `json:"progress"`
 	ErrorMessage string     `json:"error_message,omitempty"`
 	StartedAt    *time.Time `json:"started_at,omitempty"`
 	FinishedAt   *time.Time `json:"finished_at,omitempty"`
@@ -254,10 +255,24 @@ func (h *Handler) GetStatus(c *gin.Context) {
 	response.OK(c, statusView{
 		ID:           job.ID,
 		Status:       string(job.Status),
+		Progress:     clampProgress(job.Progress),
 		ErrorMessage: job.ErrorMessage,
 		StartedAt:    job.StartedAt,
 		FinishedAt:   job.FinishedAt,
 	})
+}
+
+// clampProgress maps any stored value to the [0,1] band the HTTP
+// contract advertises. A stale or partially-written row never produces a
+// number a UI cannot render.
+func clampProgress(p float64) float64 {
+	if p < 0 {
+		return 0
+	}
+	if p > 1 {
+		return 1
+	}
+	return p
 }
 
 // shouldWaitInline reports whether the caller asked the API to block on a

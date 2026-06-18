@@ -150,6 +150,19 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		log.Printf("[backtest] async pipeline disabled; only inline ?run=true is available")
 	}
 
+	// Recover from an ungraceful shutdown: re-enqueue jobs left in
+	// QUEUED, fail jobs left in RUNNING. Run synchronously at boot so
+	// we do not race incoming traffic; the budget is bounded by the
+	// number of jobs in those states (capped at 500 each).
+	reconcileCtx, reconcileCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if r, err := svc.Reconcile(reconcileCtx); err != nil {
+		log.Printf("[backtest] warning: reconcile on boot: %v", err)
+	} else if r.Requeued > 0 || r.FailedStuck > 0 {
+		log.Printf("[backtest] reconcile: requeued=%d failed_stuck=%d inspected=%d",
+			r.Requeued, r.FailedStuck, r.Inspected)
+	}
+	reconcileCancel()
+
 	return &ServiceContext{
 		Config:         c,
 		BacktestSvc:    svc,

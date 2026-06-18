@@ -53,6 +53,9 @@ type Service interface {
 	GetReport(ctx context.Context, jobID int64) (*domreport.PerformanceReport, error)
 	GetTrades(ctx context.Context, jobID int64) ([]*domtrade.Trade, error)
 	GetSnapshots(ctx context.Context, jobID int64) ([]domportfolio.Snapshot, error)
+	// Reconcile recovers from an ungraceful shutdown. See reconcile.go
+	// for the precise behaviour.
+	Reconcile(ctx context.Context) (ReconcileResult, error)
 }
 
 // Dependencies bundles the ports the service needs.

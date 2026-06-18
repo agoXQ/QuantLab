@@ -31,6 +31,12 @@ type BacktestJob struct {
 	Config         Config                 `json:"config"`
 	Status         valueobject.JobStatus  `json:"status"`
 	ErrorMessage   string                 `json:"error_message,omitempty"`
+	// Progress is a coarse 0.0-1.0 indicator of replay completion. The
+	// engine writes it periodically while iterating the calendar so the
+	// HTTP /:id/status endpoint can show a progress bar without forcing
+	// the runner into a per-bar I/O loop. Values outside [0,1] are
+	// clamped on read so a stale row never breaks the projection.
+	Progress       float64                `json:"progress"`
 	CreatedAt      time.Time              `json:"created_at"`
 	StartedAt      *time.Time             `json:"started_at,omitempty"`
 	FinishedAt     *time.Time             `json:"finished_at,omitempty"`
@@ -125,9 +131,10 @@ func (j *BacktestJob) MarkQueued(now time.Time) error {
 		j.Status = valueobject.JobStatusQueued
 		j.ErrorMessage = ""
 		// StartedAt / FinishedAt are reset so a re-queued job does not
-		// inherit timestamps from a previous attempt.
+		// inherit timestamps or progress from a previous attempt.
 		j.StartedAt = nil
 		j.FinishedAt = nil
+		j.Progress = 0
 		_ = now
 		return nil
 	default:

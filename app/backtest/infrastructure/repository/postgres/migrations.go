@@ -32,8 +32,12 @@ CREATE TABLE IF NOT EXISTS backtest_job (
     config          JSONB NOT NULL DEFAULT '{}'::jsonb,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     started_at      TIMESTAMPTZ,
-    finished_at     TIMESTAMPTZ
+    finished_at     TIMESTAMPTZ,
+    progress        DOUBLE PRECISION NOT NULL DEFAULT 0
 );
+
+ALTER TABLE backtest_job
+    ADD COLUMN IF NOT EXISTS progress DOUBLE PRECISION NOT NULL DEFAULT 0;
 
 CREATE INDEX IF NOT EXISTS idx_backtest_job_user
     ON backtest_job (user_id, created_at DESC);

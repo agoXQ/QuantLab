@@ -254,9 +254,20 @@ func (s *service) runJob(ctx context.Context, job *backtestjob.BacktestJob) (*Ru
 		// was running. We re-read the row sparingly (every 16 trading
 		// days, ~3 weeks) to keep the hot path cheap; the worst-case
 		// latency on cancel is well below the typical job runtime.
+		// We also write progress on the same cadence so the
+		// /:id/status endpoint can show a coarse progress bar without
+		// turning the inner loop into an I/O loop.
 		if i > 0 && i%16 == 0 {
-			if cur, err := s.deps.Jobs.Get(ctx, job.ID); err == nil && cur.Status == valueobject.JobStatusCancelled {
-				return nil, errJobCancelled
+			cur, err := s.deps.Jobs.Get(ctx, job.ID)
+			if err == nil {
+				if cur.Status == valueobject.JobStatusCancelled {
+					return nil, errJobCancelled
+				}
+				progress := float64(i) / float64(len(calendar))
+				if progress > job.Progress {
+					job.Progress = progress
+					_ = s.deps.Jobs.Update(ctx, job)
+				}
 			}
 		}
 		// Step 1: match orders queued the previous day at this day's open.
@@ -293,6 +304,10 @@ func (s *service) runJob(ctx context.Context, job *backtestjob.BacktestJob) (*Ru
 			}
 		}
 	}
+
+	// All bars processed; pin progress to 1.0 so the status endpoint
+	// converges even if the periodic update missed the last window.
+	job.Progress = 1.0
 
 	// Persist the trades / snapshots in bulk; report follows.
 	if err := s.deps.Trades.BulkInsert(ctx, allTrades); err != nil {
