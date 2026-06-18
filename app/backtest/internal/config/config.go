@@ -26,6 +26,11 @@ type PostgresConfig struct {
 	DSN          string `json:",optional"`
 	MaxOpenConns int    `json:",default=10"`
 	MaxIdleConns int    `json:",default=2"`
+	// AutoMigrate triggers EnsureSchema at boot when true. Production
+	// deployments should keep this false and apply migrations through a
+	// dedicated tool, but for the MVP it lets a fresh database come up
+	// without manual SQL.
+	AutoMigrate  bool   `json:",default=true"`
 }
 
 // RedisCacheConfig configures the Redis client used for short-lived caches

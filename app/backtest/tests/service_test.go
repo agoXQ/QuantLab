@@ -8,6 +8,7 @@ import (
 	appBacktest "github.com/agoXQ/QuantLab/app/backtest/application/backtest"
 	"github.com/agoXQ/QuantLab/app/backtest/domain/backtestjob"
 	domevent "github.com/agoXQ/QuantLab/app/backtest/domain/event"
+	domexec "github.com/agoXQ/QuantLab/app/backtest/domain/executor"
 	dommarket "github.com/agoXQ/QuantLab/app/backtest/domain/marketdata"
 	"github.com/agoXQ/QuantLab/app/backtest/domain/valueobject"
 	infraEvent "github.com/agoXQ/QuantLab/app/backtest/infrastructure/event"
@@ -36,6 +37,7 @@ type fixture struct {
 	svc      appBacktest.Service
 	provider *infraMarketData.InMemory
 	formula  *formulaDataport.InMemory
+	executor domexec.StrategyExecutor
 	clock    time.Time
 }
 
@@ -83,7 +85,7 @@ func newFixture(t *testing.T) *fixture {
 		Clock:      now,
 	})
 
-	return &fixture{svc: svc, provider: provider, formula: formulaPort, clock: clock}
+	return &fixture{svc: svc, provider: provider, formula: formulaPort, executor: executor, clock: clock}
 }
 
 // daily builds n consecutive UTC trading-day timestamps starting at start.

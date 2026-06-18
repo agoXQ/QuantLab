@@ -4,16 +4,28 @@
 package svc
 
 import (
+	"context"
+	"database/sql"
+	"fmt"
+	"log"
 	"time"
 
+	_ "github.com/lib/pq"
+
 	appBacktest "github.com/agoXQ/QuantLab/app/backtest/application/backtest"
+	"github.com/agoXQ/QuantLab/app/backtest/domain/backtestjob"
 	domevent "github.com/agoXQ/QuantLab/app/backtest/domain/event"
 	domexec "github.com/agoXQ/QuantLab/app/backtest/domain/executor"
+	domorder "github.com/agoXQ/QuantLab/app/backtest/domain/order"
+	domportfolio "github.com/agoXQ/QuantLab/app/backtest/domain/portfolio"
+	domreport "github.com/agoXQ/QuantLab/app/backtest/domain/report"
+	domtrade "github.com/agoXQ/QuantLab/app/backtest/domain/trade"
 	"github.com/agoXQ/QuantLab/app/backtest/internal/config"
 	infraEvent "github.com/agoXQ/QuantLab/app/backtest/infrastructure/event"
 	infraMarketData "github.com/agoXQ/QuantLab/app/backtest/infrastructure/marketdata"
 	infraMatching "github.com/agoXQ/QuantLab/app/backtest/infrastructure/matching"
 	infraMemory "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/memory"
+	infraPg "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/postgres"
 	infraStrategy "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategy"
 
 	appFormula "github.com/agoXQ/QuantLab/app/formula/application/formula"
@@ -36,29 +48,26 @@ type ServiceContext struct {
 	MarketProvider *infraMarketData.InMemory
 	FormulaPort    *formulaDataport.InMemory
 	Executor       domexec.StrategyExecutor
+	DB             *sql.DB
 }
 
 // NewServiceContext wires the dependency graph.
 //
-// External dependencies degrade gracefully: missing Kafka -> Noop publisher,
-// missing Postgres -> in-memory repos. The Formula stack is always built
-// in-process because the MVP runs the engine inside the same binary; the
-// gRPC adapter slots in alongside the in-process executor without changing
-// the application service.
+// Repository selection: when Postgres.DSN is configured we wire the
+// Postgres-backed repositories and (optionally) ensure the schema; when
+// the DSN is missing or the connection fails we fall back to the in-memory
+// repositories so the binary still boots for CI smoke tests and local
+// exploration. The Formula / Market data adapters degrade the same way.
 func NewServiceContext(c config.Config) *ServiceContext {
 	publisher := buildPublisher(c)
-	jobs := infraMemory.NewJobRepository()
-	orders := infraMemory.NewOrderRepository()
-	trades := infraMemory.NewTradeRepository()
-	portfolios := infraMemory.NewPortfolioRepository()
-	reports := infraMemory.NewReportRepository()
 	matching := infraMatching.NewNextOpenEngine(infraMatching.EngineConfig{})
-
 	provider := infraMarketData.NewInMemory()
 	formulaPort := formulaDataport.NewInMemory()
 
 	_, evaluatorSvc := buildFormulaStack()
 	executor := infraStrategy.NewFormulaExecutor(evaluatorSvc, formulaPort)
+
+	jobs, orders, trades, portfolios, reports, db := buildRepositories(c)
 
 	svc := appBacktest.NewService(appBacktest.Dependencies{
 		Jobs:       jobs,
@@ -79,7 +88,79 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		MarketProvider: provider,
 		FormulaPort:    formulaPort,
 		Executor:       executor,
+		DB:             db,
 	}
+}
+
+// buildRepositories returns the repository set and the underlying *sql.DB
+// (nil when running in-memory). The function never panics: any Postgres
+// failure logs a warning and falls back to in-memory so a temporary DB
+// outage does not take the whole service down during local development.
+func buildRepositories(c config.Config) (
+	backtestjob.Repository,
+	domorder.Repository,
+	domtrade.Repository,
+	domportfolio.Repository,
+	domreport.Repository,
+	*sql.DB,
+) {
+	if c.Postgres.DSN == "" {
+		log.Printf("[backtest] postgres DSN empty, using in-memory repositories")
+		return infraMemory.NewJobRepository(),
+			infraMemory.NewOrderRepository(),
+			infraMemory.NewTradeRepository(),
+			infraMemory.NewPortfolioRepository(),
+			infraMemory.NewReportRepository(),
+			nil
+	}
+
+	db, err := openPostgres(c.Postgres)
+	if err != nil {
+		log.Printf("[backtest] warning: postgres unavailable: %v; falling back to in-memory", err)
+		return infraMemory.NewJobRepository(),
+			infraMemory.NewOrderRepository(),
+			infraMemory.NewTradeRepository(),
+			infraMemory.NewPortfolioRepository(),
+			infraMemory.NewReportRepository(),
+			nil
+	}
+	if c.Postgres.AutoMigrate {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if err := infraPg.EnsureSchema(ctx, db); err != nil {
+			log.Printf("[backtest] warning: ensure schema: %v", err)
+		}
+	}
+	log.Printf("[backtest] postgres repositories wired")
+	return infraPg.NewJobRepository(db),
+		infraPg.NewOrderRepository(db),
+		infraPg.NewTradeRepository(db),
+		infraPg.NewPortfolioRepository(db),
+		infraPg.NewReportRepository(db),
+		db
+}
+
+// openPostgres opens the connection, applies pool sizing, and pings.
+func openPostgres(cfg config.PostgresConfig) (*sql.DB, error) {
+	db, err := sql.Open("postgres", cfg.DSN)
+	if err != nil {
+		return nil, fmt.Errorf("open postgres: %w", err)
+	}
+	if cfg.MaxOpenConns > 0 {
+		db.SetMaxOpenConns(cfg.MaxOpenConns)
+	}
+	if cfg.MaxIdleConns > 0 {
+		db.SetMaxIdleConns(cfg.MaxIdleConns)
+	}
+	db.SetConnMaxLifetime(time.Hour)
+
+	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := db.PingContext(pingCtx); err != nil {
+		_ = db.Close()
+		return nil, fmt.Errorf("ping postgres: %w", err)
+	}
+	return db, nil
 }
 
 // buildPublisher returns a Kafka-backed publisher when Brokers is set,

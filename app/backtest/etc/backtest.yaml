@@ -10,14 +10,15 @@ Etcd:
 # performance reports. Leave DSN empty to fall back to the in-memory store
 # (CI smoke tests, local exploration).
 Postgres:
-  DSN: ""
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_backtest?sslmode=disable"
   MaxOpenConns: 10
   MaxIdleConns: 2
+  AutoMigrate: true
 
 RedisCache:
   Host: localhost
   Port: 6379
-  Pass: ""
+  Pass: quantlab_dev
   DB: 0
   TTL: 86400
 
