@@ -1,6 +1,40 @@
 Name: backtest.rpc
 ListenOn: 0.0.0.0:8080
+HttpPort: 8082
 Etcd:
   Hosts:
   - 127.0.0.1:2379
   Key: backtest.rpc
+
+# Postgres holds backtest jobs, orders, trades, portfolio snapshots, and
+# performance reports. Leave DSN empty to fall back to the in-memory store
+# (CI smoke tests, local exploration).
+Postgres:
+  DSN: ""
+  MaxOpenConns: 10
+  MaxIdleConns: 2
+
+RedisCache:
+  Host: localhost
+  Port: 6379
+  Pass: ""
+  DB: 0
+  TTL: 86400
+
+Kafka:
+  Brokers: []
+
+# MarketData is the in-process Market Data adapter. When DSN is empty the
+# service uses the in-memory provider exposed for fixtures / local replay.
+MarketData:
+  DSN: ""
+  Adjustment: pre
+  MaxOpenConns: 10
+  MaxIdleConns: 2
+
+Formula:
+  Mode: inprocess
+
+Engine:
+  AnnualisationDays: 252
+  RiskFreeRate: 0
