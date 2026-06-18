@@ -10,8 +10,12 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/agoXQ/QuantLab/app/formula/application/formula"
+	domainEval "github.com/agoXQ/QuantLab/app/formula/domain/evaluator"
 	infraCache "github.com/agoXQ/QuantLab/app/formula/infrastructure/cache"
 	infraDataport "github.com/agoXQ/QuantLab/app/formula/infrastructure/dataport"
+	infraMarketAdj "github.com/agoXQ/QuantLab/app/market/infrastructure/adjustment"
+	infraMarketPg "github.com/agoXQ/QuantLab/app/market/infrastructure/postgres"
+	"github.com/agoXQ/QuantLab/app/market/domain/valueobject"
 	infraEvaluator "github.com/agoXQ/QuantLab/app/formula/infrastructure/evaluator"
 	infraIndicators "github.com/agoXQ/QuantLab/app/formula/infrastructure/indicators"
 	infraLog "github.com/agoXQ/QuantLab/app/formula/infrastructure/compilelog"
@@ -32,7 +36,13 @@ type ServiceContext struct {
 	Config           config.Config
 	FormulaService   formula.Service
 	EvaluatorService formula.EvaluatorService
-	DataPort         *infraDataport.InMemory
+	// DataPort is the read-side adapter used by the evaluator. It is the
+	// RepositoryDataPort when MarketData.DSN is configured, otherwise the
+	// InMemory adapter used for tests.
+	DataPort         domainEval.DataPort
+	// InMemoryPort is exposed so tests and the local HTTP handler can
+	// seed fixtures without reaching for the data port interface.
+	InMemoryPort     *infraDataport.InMemory
 	DB               *sql.DB
 	Metrics          *infraMetrics.PrometheusCollector
 }
@@ -64,19 +74,40 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	var db *sql.DB
 	svc = wrapWithCompileLog(c, svc, &db)
 
-	// Build the evaluator pipeline. The in-memory data port is the
-	// default; once the Market Data client is wired in, swap this with
-	// the gRPC adapter without touching the rest of the graph.
-	dataPort := infraDataport.NewInMemory()
+	// Build the evaluator pipeline. We pick the data port lazily based
+	// on configuration: when MarketData.DSN is set we wire a
+	// RepositoryDataPort that reads the Market Data tables directly
+	// (Roadmap Phase 1 monolith mode); otherwise we fall back to the
+	// in-memory port used by tests and local exploration. The
+	// gRPC-backed adapter slots in here as a third option without
+	// touching the rest of the graph.
 	indicatorLib := infraIndicators.NewLibrary()
 	evaluator := infraEvaluator.New(indicatorLib, varRegistry)
 	evalSvc := formula.NewEvaluatorService(svc, evaluator)
+
+	inMemoryPort := infraDataport.NewInMemory()
+	var dataPort interface{} = inMemoryPort
+	if repoPort, mdDB, err := buildRepositoryDataPort(c); err != nil {
+		fmt.Printf("warning: repository data port unavailable: %v\n", err)
+	} else if repoPort != nil {
+		dataPort = repoPort
+		if mdDB != nil && db == nil {
+			db = mdDB
+		}
+	}
+	_ = dataPort // surfaced via DataPort field below
+
+	port, _ := dataPort.(domainEval.DataPort)
+	if port == nil {
+		port = inMemoryPort
+	}
 
 	return &ServiceContext{
 		Config:           c,
 		FormulaService:   svc,
 		EvaluatorService: evalSvc,
-		DataPort:         dataPort,
+		DataPort:         port,
+		InMemoryPort:     inMemoryPort,
 		DB:               db,
 		Metrics:          metrics,
 	}
@@ -132,4 +163,51 @@ func wrapWithCompileLog(c config.Config, svc formula.Service, dbOut **sql.DB) fo
 	}
 
 	return formula.NewLoggedService(svc, logRepo)
+}
+
+
+// buildRepositoryDataPort constructs the RepositoryDataPort when MarketData
+// configuration is present. Returning a nil port and nil error means the
+// caller should fall back to the in-memory adapter; a non-nil error signals
+// a configuration problem worth surfacing in the logs.
+func buildRepositoryDataPort(c config.Config) (*infraDataport.RepositoryDataPort, *sql.DB, error) {
+	if c.MarketData.DSN == "" {
+		return nil, nil, nil
+	}
+	db, err := sql.Open("postgres", c.MarketData.DSN)
+	if err != nil {
+		return nil, nil, fmt.Errorf("open market data db: %w", err)
+	}
+	if c.MarketData.MaxOpenConns > 0 {
+		db.SetMaxOpenConns(c.MarketData.MaxOpenConns)
+	}
+	if c.MarketData.MaxIdleConns > 0 {
+		db.SetMaxIdleConns(c.MarketData.MaxIdleConns)
+	}
+	db.SetConnMaxLifetime(time.Hour)
+
+	pingCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := db.PingContext(pingCtx); err != nil {
+		_ = db.Close()
+		return nil, nil, fmt.Errorf("ping market data db: %w", err)
+	}
+
+	adjustmentMode := valueobject.Adjustment(c.MarketData.Adjustment)
+	if !adjustmentMode.IsValid() {
+		adjustmentMode = valueobject.AdjustmentPre
+	}
+
+	port, err := infraDataport.NewRepository(infraDataport.RepositoryConfig{
+		Bars:       infraMarketPg.NewMarketBarRepository(db),
+		Financials: infraMarketPg.NewFinancialRepository(db),
+		Factors:    infraMarketPg.NewFactorRepository(db),
+		Adjuster:   infraMarketAdj.NewFactorAdjuster(),
+		Adjustment: adjustmentMode,
+	})
+	if err != nil {
+		_ = db.Close()
+		return nil, nil, err
+	}
+	return port, db, nil
 }
