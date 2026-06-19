@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appNotif "github.com/agoXQ/QuantLab/app/notification/application/notification"
 	"github.com/agoXQ/QuantLab/app/notification/internal/svc"
 	"github.com/agoXQ/QuantLab/app/notification/pb"
 
@@ -24,7 +25,14 @@ func NewUpdatePreferencesLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 }
 
 func (l *UpdatePreferencesLogic) UpdatePreferences(in *pb.UpdatePreferencesRequest) (*pb.UpdatePreferencesResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if _, err := l.svcCtx.Service.UpdatePreferences(l.ctx, appNotif.UpdatePreferencesInput{
+		UserID:         userIDFromContext(l.ctx),
+		InAppEnabled:   in.InAppEnabled,
+		EmailEnabled:   in.EmailEnabled,
+		WebhookEnabled: in.WebhookEnabled,
+		PushEnabled:    in.PushEnabled,
+	}); err != nil {
+		return nil, err
+	}
 	return &pb.UpdatePreferencesResponse{}, nil
 }

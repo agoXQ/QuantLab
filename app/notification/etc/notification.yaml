@@ -1,6 +1,25 @@
 Name: notification.rpc
-ListenOn: 0.0.0.0:8080
+ListenOn: 0.0.0.0:8088
+HttpPort: 8089
 Etcd:
   Hosts:
   - 127.0.0.1:2379
   Key: notification.rpc
+
+# Postgres holds the Notification aggregates (notifications,
+# preferences, subscriptions). Leave DSN empty to fall back to the
+# in-memory store (CI smoke tests, local exploration).
+Postgres:
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_notification?sslmode=disable"
+  MaxOpenConns: 10
+  MaxIdleConns: 2
+  AutoMigrate: true
+
+# Cross-service event consumer. Enable to wire follow notifications
+# from User events. Default off so a vanilla MVP boot does not require
+# Kafka.
+UserSync:
+  Enabled: false
+  Brokers: []
+  Topic: user-events
+  GroupID: notification-user-sync

@@ -24,7 +24,8 @@ func NewCancelSubscriptionLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 }
 
 func (l *CancelSubscriptionLogic) CancelSubscription(in *pb.CancelSubscriptionRequest) (*pb.CancelSubscriptionResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if err := l.svcCtx.Service.CancelSubscription(l.ctx, userIDFromContext(l.ctx), in.SubscriptionId); err != nil {
+		return nil, err
+	}
 	return &pb.CancelSubscriptionResponse{}, nil
 }

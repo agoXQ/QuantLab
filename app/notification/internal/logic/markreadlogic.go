@@ -24,7 +24,8 @@ func NewMarkReadLogic(ctx context.Context, svcCtx *svc.ServiceContext) *MarkRead
 }
 
 func (l *MarkReadLogic) MarkRead(in *pb.MarkReadRequest) (*pb.MarkReadResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if err := l.svcCtx.Service.MarkRead(l.ctx, userIDFromContext(l.ctx), in.NotificationId); err != nil {
+		return nil, err
+	}
 	return &pb.MarkReadResponse{}, nil
 }

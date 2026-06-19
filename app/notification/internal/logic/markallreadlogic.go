@@ -24,7 +24,8 @@ func NewMarkAllReadLogic(ctx context.Context, svcCtx *svc.ServiceContext) *MarkA
 }
 
 func (l *MarkAllReadLogic) MarkAllRead(in *pb.MarkAllReadRequest) (*pb.MarkAllReadResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if _, err := l.svcCtx.Service.MarkAllRead(l.ctx, userIDFromContext(l.ctx)); err != nil {
+		return nil, err
+	}
 	return &pb.MarkAllReadResponse{}, nil
 }

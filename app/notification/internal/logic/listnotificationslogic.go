@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appNotif "github.com/agoXQ/QuantLab/app/notification/application/notification"
 	"github.com/agoXQ/QuantLab/app/notification/internal/svc"
 	"github.com/agoXQ/QuantLab/app/notification/pb"
 
@@ -24,7 +25,16 @@ func NewListNotificationsLogic(ctx context.Context, svcCtx *svc.ServiceContext) 
 }
 
 func (l *ListNotificationsLogic) ListNotifications(in *pb.ListNotificationsRequest) (*pb.ListNotificationsResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.ListNotificationsResponse{}, nil
+	out, err := l.svcCtx.Service.ListNotifications(l.ctx, appNotif.ListNotificationsInput{
+		UserID: userIDFromContext(l.ctx),
+		Cursor: cursorString(in.Cursor),
+		Limit:  int(in.Limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ListNotificationsResponse{
+		Notifications: notificationsToProto(out.Items),
+		Cursor:        cursorProto(out.NextCursor),
+	}, nil
 }

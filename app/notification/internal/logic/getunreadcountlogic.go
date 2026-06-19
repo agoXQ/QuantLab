@@ -24,7 +24,9 @@ func NewGetUnreadCountLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Ge
 }
 
 func (l *GetUnreadCountLogic) GetUnreadCount(in *pb.GetUnreadCountRequest) (*pb.GetUnreadCountResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetUnreadCountResponse{}, nil
+	n, err := l.svcCtx.Service.GetUnreadCount(l.ctx, userIDFromContext(l.ctx))
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetUnreadCountResponse{Count: int32(n)}, nil
 }

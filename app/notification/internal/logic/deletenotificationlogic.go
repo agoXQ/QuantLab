@@ -24,7 +24,8 @@ func NewDeleteNotificationLogic(ctx context.Context, svcCtx *svc.ServiceContext)
 }
 
 func (l *DeleteNotificationLogic) DeleteNotification(in *pb.DeleteNotificationRequest) (*pb.DeleteNotificationResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if err := l.svcCtx.Service.DeleteNotification(l.ctx, userIDFromContext(l.ctx), in.NotificationId); err != nil {
+		return nil, err
+	}
 	return &pb.DeleteNotificationResponse{}, nil
 }
