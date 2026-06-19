@@ -103,7 +103,8 @@ func (r *UserRepository) Get(ctx context.Context, id int64) (*domuser.User, erro
 		       COALESCE(avatar, ''), COALESCE(bio, ''),
 		       COALESCE(nickname, ''), COALESCE(location, ''),
 		       status, creator_status, verified_status, membership_tier,
-		       created_at, updated_at, last_login_at
+		       created_at, updated_at, last_login_at,
+		       strategy_count, backtest_count
 		FROM app_user WHERE id = $1`
 	row := r.db.QueryRowContext(ctx, q, id)
 	u, err := scanUser(row)
@@ -120,7 +121,8 @@ func (r *UserRepository) GetByEmail(ctx context.Context, email string) (*domuser
 		       COALESCE(avatar, ''), COALESCE(bio, ''),
 		       COALESCE(nickname, ''), COALESCE(location, ''),
 		       status, creator_status, verified_status, membership_tier,
-		       created_at, updated_at, last_login_at
+		       created_at, updated_at, last_login_at,
+		       strategy_count, backtest_count
 		FROM app_user WHERE LOWER(email) = LOWER($1)`
 	row := r.db.QueryRowContext(ctx, q, email)
 	u, err := scanUser(row)
@@ -137,7 +139,8 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (*d
 		       COALESCE(avatar, ''), COALESCE(bio, ''),
 		       COALESCE(nickname, ''), COALESCE(location, ''),
 		       status, creator_status, verified_status, membership_tier,
-		       created_at, updated_at, last_login_at
+		       created_at, updated_at, last_login_at,
+		       strategy_count, backtest_count
 		FROM app_user WHERE LOWER(username) = LOWER($1)`
 	row := r.db.QueryRowContext(ctx, q, username)
 	u, err := scanUser(row)
@@ -165,6 +168,7 @@ func scanUser(row scannable) (*domuser.User, error) {
 		&u.Avatar, &u.Bio, &u.Nickname, &u.Location,
 		&statusInt, &creatorInt, &verifiedInt, &tierStr,
 		&u.CreatedAt, &u.UpdatedAt, &lastLoginAt,
+		&u.StrategyCount, &u.BacktestCount,
 	); err != nil {
 		return nil, err
 	}
@@ -196,4 +200,30 @@ func mapUniqueViolation(err error) error {
 		}
 	}
 	return fmt.Errorf("user repository: %w", err)
+}
+
+// IncrementStrategyCount atomically bumps the strategy counter,
+// clamping the result at zero so a stray "deleted" event cannot push
+// the value negative. ErrUserNotFound surfaces when the row is gone.
+func (r *UserRepository) IncrementStrategyCount(ctx context.Context, userID int64, delta int64) error {
+	return r.bumpCounter(ctx, "strategy_count", userID, delta)
+}
+
+// IncrementBacktestCount mirrors IncrementStrategyCount for the
+// backtest counter.
+func (r *UserRepository) IncrementBacktestCount(ctx context.Context, userID int64, delta int64) error {
+	return r.bumpCounter(ctx, "backtest_count", userID, delta)
+}
+
+func (r *UserRepository) bumpCounter(ctx context.Context, column string, userID int64, delta int64) error {
+	stmt := fmt.Sprintf(`UPDATE app_user SET %s = GREATEST(%s + $2, 0), updated_at = NOW() WHERE id = $1`, column, column)
+	res, err := r.db.ExecContext(ctx, stmt, userID, delta)
+	if err != nil {
+		return fmt.Errorf("bump %s: %w", column, err)
+	}
+	n, _ := res.RowsAffected()
+	if n == 0 {
+		return userErr.ErrUserNotFound
+	}
+	return nil
 }

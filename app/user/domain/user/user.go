@@ -42,6 +42,8 @@ type User struct {
 	CreatedAt      time.Time                   `json:"created_at"`
 	UpdatedAt      time.Time                   `json:"updated_at"`
 	LastLoginAt    *time.Time                  `json:"last_login_at,omitempty"`
+	StrategyCount  int64                       `json:"strategy_count"`
+	BacktestCount  int64                       `json:"backtest_count"`
 }
 
 // Validate runs structural checks. The aggregate refuses to persist
@@ -155,4 +157,12 @@ type Repository interface {
 	Get(ctx context.Context, id int64) (*User, error)
 	GetByEmail(ctx context.Context, email string) (*User, error)
 	GetByUsername(ctx context.Context, username string) (*User, error)
+
+	// IncrementStrategyCount / IncrementBacktestCount mutate the
+	// activity counters atomically. delta may be negative; the
+	// repository must clamp the resulting value at zero so a stray
+	// "deleted" event cannot push the counter below the floor. A
+	// missing user surfaces ErrUserNotFound.
+	IncrementStrategyCount(ctx context.Context, userID int64, delta int64) error
+	IncrementBacktestCount(ctx context.Context, userID int64, delta int64) error
 }

@@ -8,3 +8,9 @@ import (
 // without making the fake hasher import the domain package twice; the
 // helper exists so the fakeHasher above stays a tight value type.
 func userInvalidCredentials() error { return userErr.ErrInvalidCredentials }
+
+
+// userInvalidToken returns the canonical ErrTokenInvalid so the fake
+// refresh verifier can map malformed tokens to the same error
+// production surfaces.
+func userInvalidToken() error { return userErr.ErrTokenInvalid }

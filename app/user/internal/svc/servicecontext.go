@@ -31,7 +31,9 @@ type ServiceContext struct {
 	UserSvc appUser.Service
 	DB      *sql.DB
 
-	tokenIssuer *token.JWTIssuer
+	tokenIssuer  *token.JWTIssuer
+	strategySync *syncRunner
+	backtestSync *syncRunner
 }
 
 // NewServiceContext wires the dependency graph.
@@ -47,20 +49,30 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	publisher := buildPublisher(c)
 
 	svc := appUser.NewService(appUser.Dependencies{
-		Users:     users,
-		Follows:   follows,
-		Hasher:    hasher,
-		Tokens:    issuer,
-		Publisher: publisher,
-		Clock:     time.Now,
+		Users:           users,
+		Follows:         follows,
+		Hasher:          hasher,
+		Tokens:          issuer,
+		RefreshVerifier: token.NewRefreshVerifier(issuer),
+		Publisher:       publisher,
+		Clock:           time.Now,
 	})
 
-	return &ServiceContext{
-		Config:      c,
-		UserSvc:     svc,
-		DB:          db,
-		tokenIssuer: issuer,
+	sc := &ServiceContext{
+		Config:       c,
+		UserSvc:      svc,
+		DB:           db,
+		tokenIssuer:  issuer,
+		strategySync: buildStrategySync(c, svc),
+		backtestSync: buildBacktestSync(c, svc),
 	}
+	if sc.strategySync != nil {
+		sc.strategySync.start()
+	}
+	if sc.backtestSync != nil {
+		sc.backtestSync.start()
+	}
+	return sc
 }
 
 // TokenIssuer exposes the issuer so future middleware can verify JWTs
@@ -72,11 +84,25 @@ func (sc *ServiceContext) TokenIssuer() *token.JWTIssuer {
 	return sc.tokenIssuer
 }
 
-// Close releases the underlying database handle. Safe to call multiple
-// times.
+// Close releases the database handle and shuts down the cross-service
+// event consumers. Safe to call multiple times.
 func (sc *ServiceContext) Close() {
 	if sc == nil {
 		return
+	}
+	for _, r := range []*syncRunner{sc.strategySync, sc.backtestSync} {
+		if r == nil {
+			continue
+		}
+		if r.cancel != nil {
+			r.cancel()
+		}
+		if r.done != nil {
+			<-r.done
+		}
+		if r.closer != nil {
+			_ = r.closer.Close()
+		}
 	}
 	if sc.DB != nil {
 		_ = sc.DB.Close()

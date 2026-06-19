@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -63,6 +64,8 @@ func (fakeHasher) Verify(hash, plain string) error {
 
 // fakeIssuer issues opaque tokens so we can assert the application
 // service called the issuer without involving a real JWT library.
+// The refresh-token format is "refresh-<userID>" so the matching
+// verifier can decode it back without sharing state.
 type fakeIssuer struct{}
 
 func (fakeIssuer) Issue(userID int64) (appUser.TokenPair, error) {
@@ -72,6 +75,24 @@ func (fakeIssuer) Issue(userID int64) (appUser.TokenPair, error) {
 		RefreshToken: "refresh-" + tag,
 		ExpiresIn:    3600,
 	}, nil
+}
+
+// fakeRefreshVerifier decodes the deterministic refresh tokens minted
+// above. Empty / malformed tokens map to the canonical
+// ErrTokenInvalid so the application service surfaces the same error
+// production sees.
+type fakeRefreshVerifier struct{}
+
+func (fakeRefreshVerifier) VerifyRefresh(token string) (int64, error) {
+	const prefix = "refresh-"
+	if !strings.HasPrefix(token, prefix) {
+		return 0, userInvalidToken()
+	}
+	id, err := strconv.ParseInt(token[len(prefix):], 10, 64)
+	if err != nil || id <= 0 {
+		return 0, userInvalidToken()
+	}
+	return id, nil
 }
 
 // fixture wires the application service against the in-memory
@@ -89,12 +110,13 @@ func newFixture(t *testing.T) *fixture {
 	now := func() time.Time { return clock }
 	publisher := newRecordingPublisher()
 	svc := appUser.NewService(appUser.Dependencies{
-		Users:     infraMemory.NewUserRepository(),
-		Follows:   infraMemory.NewFollowRepository(),
-		Hasher:    fakeHasher{},
-		Tokens:    fakeIssuer{},
-		Publisher: publisher,
-		Clock:     now,
+		Users:           infraMemory.NewUserRepository(),
+		Follows:         infraMemory.NewFollowRepository(),
+		Hasher:          fakeHasher{},
+		Tokens:          fakeIssuer{},
+		RefreshVerifier: fakeRefreshVerifier{},
+		Publisher:       publisher,
+		Clock:           now,
 	})
 	return &fixture{svc: svc, publisher: publisher, clock: clock}
 }

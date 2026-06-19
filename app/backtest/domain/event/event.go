@@ -56,6 +56,7 @@ type BacktestStartedPayload struct {
 // BacktestFinishedPayload is the payload for BacktestFinished.
 type BacktestFinishedPayload struct {
 	JobID        int64   `json:"job_id"`
+	UserID       int64   `json:"user_id,omitempty"`
 	StrategyID   int64   `json:"strategy_id,omitempty"`
 	TotalReturn  float64 `json:"total_return"`
 	AnnualReturn float64 `json:"annual_return"`

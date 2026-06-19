@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	appUser "github.com/agoXQ/QuantLab/app/user/application/user"
+	"github.com/agoXQ/QuantLab/app/user/interfaces/middleware"
 	"github.com/agoXQ/QuantLab/pkg/errors"
 	"github.com/agoXQ/QuantLab/pkg/response"
 )
@@ -92,10 +93,17 @@ func (h *Handler) GetProfile(c *gin.Context) {
 	})
 }
 
-// UpdateProfile handles PUT /api/v1/users/:id/profile.
+// UpdateProfile handles PUT /api/v1/users/:id/profile. When the auth
+// middleware resolved a caller id we refuse a mismatched edit; an
+// anonymous request still works in the MVP so curl-driven smoke tests
+// stay convenient.
 func (h *Handler) UpdateProfile(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
+		return
+	}
+	if caller := middleware.UserIDFromGin(c); caller != 0 && caller != id {
+		response.Error(c, http.StatusForbidden, errors.ErrForbidden)
 		return
 	}
 	var req updateProfileRequest

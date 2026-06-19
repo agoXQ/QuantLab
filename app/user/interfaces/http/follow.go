@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	appUser "github.com/agoXQ/QuantLab/app/user/application/user"
+	"github.com/agoXQ/QuantLab/app/user/interfaces/middleware"
 	"github.com/agoXQ/QuantLab/pkg/errors"
 	"github.com/agoXQ/QuantLab/pkg/response"
 )
@@ -84,11 +85,15 @@ func (h *Handler) ListFollowing(c *gin.Context) {
 	response.OK(c, gin.H{"items": res.Users})
 }
 
-// readFollowerID accepts either a query param or a JSON body so the
-// MVP route works from curl and from a browser session without needing
-// a fully wired auth middleware. Production deployments should pull
-// the id from the verified JWT claims via middleware.
+// readFollowerID prefers the auth-resolved caller id, falling back
+// to query / body parameters so curl-driven smoke tests still work
+// before the auth interceptor is wired everywhere. Production
+// deployments rely on the resolved id and the lower-priority
+// fallbacks ride along for tooling.
 func readFollowerID(c *gin.Context) int64 {
+	if id := middleware.UserIDFromGin(c); id > 0 {
+		return id
+	}
 	if v := parseInt64(c.Query("follower_id")); v > 0 {
 		return v
 	}

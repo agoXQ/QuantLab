@@ -11,11 +11,24 @@ import "github.com/zeromicro/go-zero/zrpc"
 type Config struct {
 	zrpc.RpcServerConf
 
-	HttpPort int            `json:",default=8087"`
-	Postgres PostgresConfig `json:",optional"`
-	Kafka    KafkaConfig    `json:",optional"`
-	Token    TokenConfig    `json:",optional"`
-	Password PasswordConfig `json:",optional"`
+	HttpPort     int                `json:",default=8087"`
+	Postgres     PostgresConfig     `json:",optional"`
+	Kafka        KafkaConfig        `json:",optional"`
+	Token        TokenConfig        `json:",optional"`
+	Password     PasswordConfig     `json:",optional"`
+	StrategySync EventSyncConfig    `json:",optional"`
+	BacktestSync EventSyncConfig    `json:",optional"`
+}
+
+// EventSyncConfig configures a cross-service Kafka consumer. When
+// Enabled is true the service subscribes to the topic and updates the
+// activity counters on every relevant event. Disabled by default so a
+// vanilla MVP boot does not require Kafka.
+type EventSyncConfig struct {
+	Enabled bool     `json:",default=false"`
+	Brokers []string `json:",optional"`
+	Topic   string   `json:",optional"`
+	GroupID string   `json:",optional"`
 }
 
 // PostgresConfig configures the Postgres connection used to persist

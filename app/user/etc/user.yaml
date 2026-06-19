@@ -34,3 +34,18 @@ Token:
 # production deployments to balance security and CPU.
 Password:
   BcryptCost: 10
+
+# Cross-service event consumers. Enable to wire user.strategy_count /
+# user.backtest_count from upstream services. Default off so a vanilla
+# MVP boot does not require Kafka.
+StrategySync:
+  Enabled: false
+  Brokers: []
+  Topic: strategy-events
+  GroupID: user-strategy-sync
+
+BacktestSync:
+  Enabled: false
+  Brokers: []
+  Topic: backtest-events
+  GroupID: user-backtest-sync

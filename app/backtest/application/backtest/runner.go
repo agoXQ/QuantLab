@@ -167,6 +167,7 @@ func (s *service) executeJob(ctx context.Context, job *backtestjob.BacktestJob) 
 	}
 	s.publish(ctx, domevent.EventBacktestFinished, job.ID, domevent.BacktestFinishedPayload{
 		JobID:        job.ID,
+		UserID:       job.UserID,
 		StrategyID:   job.StrategyID,
 		TotalReturn:  result.Report.TotalReturn,
 		AnnualReturn: result.Report.AnnualReturn,

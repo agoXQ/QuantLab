@@ -39,6 +39,7 @@ var (
 	ErrInvalidStatus   = New(10015, "invalid account status")
 	ErrInvalidTier     = New(10016, "invalid membership tier")
 	ErrSelfFollow      = New(10017, "cannot follow yourself")
+	ErrSamePassword    = New(10018, "new password must differ from current")
 )
 
 // 2xxxx — Conflict / state-machine refusals.

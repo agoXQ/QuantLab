@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	authmiddleware "github.com/agoXQ/QuantLab/app/user/interfaces/middleware"
 	httpHandler "github.com/agoXQ/QuantLab/app/user/interfaces/http"
 	"github.com/agoXQ/QuantLab/app/user/internal/config"
 	"github.com/agoXQ/QuantLab/app/user/internal/server"
@@ -32,6 +33,8 @@ func main() {
 	conf.MustLoad(*configFile, &c)
 	ctx := svc.NewServiceContext(c)
 
+	authInterceptor := authmiddleware.GRPCAuth(ctx.TokenIssuer())
+
 	s := zrpc.MustNewServer(c.RpcServerConf, func(grpcServer *grpc.Server) {
 		pb.RegisterUserServiceServer(grpcServer, server.NewUserServiceServer(ctx))
 
@@ -39,6 +42,7 @@ func main() {
 			reflection.Register(grpcServer)
 		}
 	})
+	s.AddUnaryInterceptors(authInterceptor)
 	defer s.Stop()
 	defer ctx.Close()
 
@@ -56,6 +60,7 @@ func main() {
 		gin.SetMode(gin.ReleaseMode)
 		router := gin.New()
 		router.Use(gin.Recovery())
+		router.Use(authmiddleware.GinAuth(ctx.TokenIssuer(), false))
 
 		apiGroup := router.Group("/api/v1/users")
 		handler := httpHandler.NewHandler(ctx.UserSvc)

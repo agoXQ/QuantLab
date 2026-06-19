@@ -31,12 +31,28 @@ type LoginRequest struct {
 	Password string
 }
 
-// LoginResult is what Login returns.
+// LoginResult is what Login / RefreshToken return.
 type LoginResult struct {
 	User         *user.User
 	AccessToken  string
 	RefreshToken string
 	ExpiresIn    int64
+}
+
+// RefreshTokenRequest carries the refresh-token string the client
+// already holds. The application service decodes it through the
+// RefreshTokenVerifier port and reissues a fresh pair.
+type RefreshTokenRequest struct {
+	RefreshToken string
+}
+
+// ChangePasswordRequest is the payload for the ChangePassword use
+// case. The CurrentPassword field is required so a stolen token alone
+// cannot rotate the credential.
+type ChangePasswordRequest struct {
+	UserID          int64
+	CurrentPassword string
+	NewPassword     string
 }
 
 // UpdateProfileRequest carries an optional metadata patch. Pointer
@@ -49,6 +65,17 @@ type UpdateProfileRequest struct {
 	Location *string
 }
 
+// UpdateAccountRequest is the moderator-style patch surfaced by the
+// admin tooling. Pointer fields preserve "leave as-is" so a partial
+// update never accidentally clears another field.
+type UpdateAccountRequest struct {
+	UserID         int64
+	Status         *valueobject.AccountStatus
+	CreatorStatus  *valueobject.CreatorStatus
+	VerifiedStatus *valueobject.VerifiedStatus
+	MembershipTier *valueobject.MembershipTier
+}
+
 // FollowRequest captures the (follower, followee) pair.
 type FollowRequest struct {
 	FollowerID int64
@@ -57,8 +84,8 @@ type FollowRequest struct {
 
 // ProfileSnapshot bundles the user row with the basic counters the
 // platform's profile view needs. Strategy / backtest counts come from
-// sibling services in production; the MVP ships zeros so the call
-// stays self-contained.
+// the cross-service event subscribers that listen to strategy-events
+// and backtest-events.
 type ProfileSnapshot struct {
 	User           *user.User
 	FollowerCount  int64
@@ -67,22 +94,11 @@ type ProfileSnapshot struct {
 	BacktestCount  int64
 }
 
-// FollowList returns a page of Follow rows alongside the user records
-// of the partners. The caller decides whether to render followers or
-// following based on which method was invoked.
+// FollowList returns a page of users (the partners on a follow row).
+// The caller decides whether to render followers or following based on
+// which method was invoked.
 type FollowList struct {
 	Users []*user.User
-}
-
-// AccountUpdates is the optional moderator-style patch we expose for
-// admin tooling. None of the MVP HTTP routes wire it; the type exists
-// so the application service stays open to status changes from a
-// future admin surface without growing more methods.
-type AccountUpdates struct {
-	Status         *valueobject.AccountStatus
-	CreatorStatus  *valueobject.CreatorStatus
-	VerifiedStatus *valueobject.VerifiedStatus
-	MembershipTier *valueobject.MembershipTier
 }
 
 // silence: keep the follow import live for future Follow query types.

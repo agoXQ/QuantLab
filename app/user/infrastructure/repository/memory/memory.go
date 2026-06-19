@@ -125,6 +125,37 @@ func (r *UserRepository) GetByUsername(_ context.Context, username string) (*dom
 	return &cp, nil
 }
 
+// IncrementStrategyCount bumps (or decrements) the strategy counter.
+// The MVP clamps at zero so a stray "deleted" event cannot push the
+// counter negative.
+func (r *UserRepository) IncrementStrategyCount(_ context.Context, userID int64, delta int64) error {
+	return r.bumpCounter(userID, func(u *domuser.User) { u.StrategyCount = clampNonNegative(u.StrategyCount + delta) })
+}
+
+// IncrementBacktestCount mirrors IncrementStrategyCount for the
+// backtest counter.
+func (r *UserRepository) IncrementBacktestCount(_ context.Context, userID int64, delta int64) error {
+	return r.bumpCounter(userID, func(u *domuser.User) { u.BacktestCount = clampNonNegative(u.BacktestCount + delta) })
+}
+
+func (r *UserRepository) bumpCounter(userID int64, mutate func(*domuser.User)) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	u, ok := r.data[userID]
+	if !ok {
+		return userErr.ErrUserNotFound
+	}
+	mutate(u)
+	return nil
+}
+
+func clampNonNegative(v int64) int64 {
+	if v < 0 {
+		return 0
+	}
+	return v
+}
+
 // FollowRepository is the in-memory Follow repository. (follower,
 // followee) pairs are unique; the implementation enforces that with a
 // composite key map.

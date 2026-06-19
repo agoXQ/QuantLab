@@ -27,8 +27,13 @@ CREATE TABLE IF NOT EXISTS app_user (
     membership_tier VARCHAR(32) NOT NULL DEFAULT 'FREE',
     created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    last_login_at   TIMESTAMPTZ
+    last_login_at   TIMESTAMPTZ,
+    strategy_count  BIGINT NOT NULL DEFAULT 0,
+    backtest_count  BIGINT NOT NULL DEFAULT 0
 );
+
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS strategy_count BIGINT NOT NULL DEFAULT 0;
+ALTER TABLE app_user ADD COLUMN IF NOT EXISTS backtest_count BIGINT NOT NULL DEFAULT 0;
 
 CREATE UNIQUE INDEX IF NOT EXISTS uniq_app_user_email
     ON app_user (LOWER(email));

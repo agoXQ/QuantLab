@@ -156,7 +156,13 @@ func (s *service) GetProfile(ctx context.Context, userID int64) (*ProfileSnapsho
 	if err != nil {
 		return nil, err
 	}
-	return &ProfileSnapshot{User: u, FollowerCount: follower, FollowingCount: following}, nil
+	return &ProfileSnapshot{
+		User:           u,
+		FollowerCount:  follower,
+		FollowingCount: following,
+		StrategyCount:  u.StrategyCount,
+		BacktestCount:  u.BacktestCount,
+	}, nil
 }
 
 // UpdateProfile applies a profile patch on behalf of the supplied user.

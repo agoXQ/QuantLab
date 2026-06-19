@@ -15,6 +15,25 @@ import (
 	userErr "github.com/agoXQ/QuantLab/app/user/domain/errors"
 )
 
+// audienceAccess / audienceRefresh tag the two token kinds the issuer
+// mints. Verify rejects a refresh token when the caller asks for an
+// access token (and vice versa) so an attacker that captures a long-
+// lived refresh token cannot use it to call protected APIs directly.
+const (
+	audienceAccess  = "access"
+	audienceRefresh = "refresh"
+)
+
+// TokenKind names the high-level intent of a token; exported so other
+// packages (middleware, refresh use case) can keep their assumptions
+// explicit.
+type TokenKind string
+
+const (
+	KindAccess  TokenKind = audienceAccess
+	KindRefresh TokenKind = audienceRefresh
+)
+
 // Config configures the JWT issuer.
 type Config struct {
 	// Secret is the HS256 signing key. Must be at least 32 bytes in
@@ -59,11 +78,11 @@ func (i *JWTIssuer) Issue(userID int64) (appUser.TokenPair, error) {
 		return appUser.TokenPair{}, fmt.Errorf("token: signing secret is empty")
 	}
 	now := i.cfg.Clock()
-	access, err := i.signClaims(now, userID, "access", i.cfg.AccessTTL)
+	access, err := i.signClaims(now, userID, audienceAccess, i.cfg.AccessTTL)
 	if err != nil {
 		return appUser.TokenPair{}, err
 	}
-	refresh, err := i.signClaims(now, userID, "refresh", i.cfg.RefreshTTL)
+	refresh, err := i.signClaims(now, userID, audienceRefresh, i.cfg.RefreshTTL)
 	if err != nil {
 		return appUser.TokenPair{}, err
 	}
@@ -75,9 +94,11 @@ func (i *JWTIssuer) Issue(userID int64) (appUser.TokenPair, error) {
 }
 
 // Verify validates the supplied token string and returns the user id
-// encoded in the subject claim. Exposed so future middleware (HTTP /
-// gRPC interceptor) can reuse the same parser.
-func (i *JWTIssuer) Verify(token string) (int64, error) {
+// encoded in the subject claim. Exposed so middleware (HTTP / gRPC
+// interceptor) and the refresh use case can reuse the same parser.
+// kind selects which audience the token must carry; pass an empty
+// string to skip the audience check (useful in tests).
+func (i *JWTIssuer) Verify(token string, kind TokenKind) (int64, error) {
 	parsed, err := jwt.ParseWithClaims(token, &jwt.RegisteredClaims{}, func(t *jwt.Token) (any, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, userErr.ErrTokenInvalid
@@ -92,6 +113,9 @@ func (i *JWTIssuer) Verify(token string) (int64, error) {
 	}
 	claims, ok := parsed.Claims.(*jwt.RegisteredClaims)
 	if !ok || !parsed.Valid {
+		return 0, userErr.ErrTokenInvalid
+	}
+	if kind != "" && !audienceMatches(claims.Audience, string(kind)) {
 		return 0, userErr.ErrTokenInvalid
 	}
 	id, err := strconv.ParseInt(claims.Subject, 10, 64)
@@ -123,4 +147,13 @@ func isExpired(err error) bool {
 		return false
 	}
 	return verr.Errors&jwt.ValidationErrorExpired != 0
+}
+
+func audienceMatches(have jwt.ClaimStrings, want string) bool {
+	for _, a := range have {
+		if a == want {
+			return true
+		}
+	}
+	return false
 }

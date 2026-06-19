@@ -7,11 +7,9 @@ package logic
 
 import (
 	"context"
-	"strconv"
 	"strings"
 
-	"google.golang.org/grpc/metadata"
-
+	"github.com/agoXQ/QuantLab/app/user/interfaces/middleware"
 	domuser "github.com/agoXQ/QuantLab/app/user/domain/user"
 	"github.com/agoXQ/QuantLab/app/user/pb"
 )
@@ -57,25 +55,10 @@ func optionalString(s string) *string {
 	return &s
 }
 
-// userIDFromContext extracts the caller's user id from gRPC metadata.
-// MVP proto messages do not always carry the caller, so the helper
-// looks for the metadata header "x-user-id"; missing headers yield 0
-// so the application service surfaces ErrInvalidUser cleanly.
+// userIDFromContext returns the caller id stamped onto ctx by the
+// auth interceptor. The interceptor accepts either an Authorization:
+// Bearer JWT or a metadata "x-user-id" fallback so the gRPC adapters
+// stay free of token plumbing.
 func userIDFromContext(ctx context.Context) int64 {
-	if ctx == nil {
-		return 0
-	}
-	md, ok := metadata.FromIncomingContext(ctx)
-	if !ok {
-		return 0
-	}
-	values := md.Get("x-user-id")
-	if len(values) == 0 {
-		return 0
-	}
-	id, err := strconv.ParseInt(values[0], 10, 64)
-	if err != nil || id <= 0 {
-		return 0
-	}
-	return id
+	return middleware.UserIDFromContext(ctx)
 }
