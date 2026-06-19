@@ -150,3 +150,33 @@ func (r *SubscriptionRepository) ExistsByObject(ctx context.Context, subscriberI
 	}
 	return true, nil
 }
+
+
+// ListSubscribers returns the unique subscriber ids opted into the
+// given (object_type, object_id) pair so the fan-out path can mint
+// one notification per follower without paging twice.
+func (r *SubscriptionRepository) ListSubscribers(ctx context.Context, objectType string, objectID int64) ([]int64, error) {
+	objType := domSub.NormaliseObjectType(objectType)
+	if objType == "" || objectID <= 0 {
+		return nil, nil
+	}
+	const stmt = `
+		SELECT DISTINCT subscriber_id
+		FROM notification_subscription
+		WHERE object_type = $1 AND object_id = $2
+		ORDER BY subscriber_id ASC`
+	rows, err := r.db.QueryContext(ctx, stmt, objType, objectID)
+	if err != nil {
+		return nil, fmt.Errorf("subscription repository: list subscribers: %w", err)
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("subscription repository: scan subscriber: %w", err)
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
+}

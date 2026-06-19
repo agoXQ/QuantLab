@@ -10,9 +10,11 @@ import "github.com/zeromicro/go-zero/zrpc"
 type Config struct {
 	zrpc.RpcServerConf
 
-	HttpPort int             `json:",default=8089"`
-	Postgres PostgresConfig  `json:",optional"`
-	UserSync EventSyncConfig `json:",optional"`
+	HttpPort     int             `json:",default=8089"`
+	Postgres     PostgresConfig  `json:",optional"`
+	UserSync     EventSyncConfig `json:",optional"`
+	StrategySync EventSyncConfig `json:",optional"`
+	BacktestSync EventSyncConfig `json:",optional"`
 }
 
 // PostgresConfig configures the Postgres connection used to persist

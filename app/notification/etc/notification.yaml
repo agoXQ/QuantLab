@@ -23,3 +23,21 @@ UserSync:
   Brokers: []
   Topic: user-events
   GroupID: notification-user-sync
+
+
+# Strategy events drive fan-out notifications: subscribers of a
+# strategy receive a STRATEGY-typed notification when a new version is
+# published or when the strategy is forked.
+StrategySync:
+  Enabled: false
+  Brokers: []
+  Topic: strategy-events
+  GroupID: notification-strategy-sync
+
+# Backtest events notify the job's owner when their backtest finishes
+# or fails.
+BacktestSync:
+  Enabled: false
+  Brokers: []
+  Topic: backtest-events
+  GroupID: notification-backtest-sync

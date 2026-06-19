@@ -155,6 +155,7 @@ func (s *service) executeJob(ctx context.Context, job *backtestjob.BacktestJob) 
 		_ = s.deps.Jobs.Update(ctx, job)
 		s.publish(ctx, domevent.EventBacktestFailed, job.ID, domevent.BacktestFailedPayload{
 			JobID:  job.ID,
+			UserID: job.UserID,
 			Reason: runErr.Error(),
 		})
 		return nil, runErr

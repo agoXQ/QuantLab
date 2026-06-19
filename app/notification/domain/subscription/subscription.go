@@ -66,4 +66,8 @@ type Repository interface {
 	List(ctx context.Context, filter ListFilter) ([]*Subscription, error)
 	Count(ctx context.Context, filter ListFilter) (int64, error)
 	ExistsByObject(ctx context.Context, subscriberID int64, objectType string, objectID int64) (bool, error)
+	// ListSubscribers returns the user ids subscribed to the given
+	// (object_type, object_id) pair so the fan-out path can mint one
+	// notification per follower without paging twice.
+	ListSubscribers(ctx context.Context, objectType string, objectID int64) ([]int64, error)
 }

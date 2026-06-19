@@ -137,3 +137,31 @@ func (r *SubscriptionRepository) ExistsByObject(_ context.Context, subscriberID 
 	}
 	return false, nil
 }
+
+
+// ListSubscribers returns the deduplicated subscriber ids opted into
+// (object_type, object_id). The result is stable to make it test-
+// friendly: subscribers are sorted ascending so callers can compare
+// snapshots without first sorting on their side.
+func (r *SubscriptionRepository) ListSubscribers(_ context.Context, objectType string, objectID int64) ([]int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	objType := domSub.NormaliseObjectType(objectType)
+	if objType == "" || objectID <= 0 {
+		return nil, nil
+	}
+	seen := map[int64]struct{}{}
+	var out []int64
+	for _, row := range r.rows {
+		if row.ObjectType != objType || row.ObjectID != objectID {
+			continue
+		}
+		if _, ok := seen[row.SubscriberID]; ok {
+			continue
+		}
+		seen[row.SubscriberID] = struct{}{}
+		out = append(out, row.SubscriberID)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i] < out[j] })
+	return out, nil
+}

@@ -64,9 +64,12 @@ type BacktestFinishedPayload struct {
 	MaxDrawdown  float64 `json:"max_drawdown"`
 }
 
-// BacktestFailedPayload is the payload for BacktestFailed.
+// BacktestFailedPayload is the payload for BacktestFailed. UserID is
+// included so downstream consumers (Notification) can address the
+// failure back to the job's owner without an extra lookup.
 type BacktestFailedPayload struct {
 	JobID  int64  `json:"job_id"`
+	UserID int64  `json:"user_id,omitempty"`
 	Reason string `json:"reason"`
 }
 

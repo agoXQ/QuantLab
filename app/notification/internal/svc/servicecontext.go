@@ -1,7 +1,7 @@
 // Package svc is the composition root for the Notification Service.
 // It wires the application service against the in-memory or Postgres-
 // backed repositories chosen by config and exposes the resulting
-// Service for the gRPC / HTTP handlers + the user-events consumer.
+// Service for the gRPC / HTTP handlers + the cross-service consumers.
 package svc
 
 import (
@@ -14,23 +14,22 @@ import (
 	_ "github.com/lib/pq"
 
 	appNotif "github.com/agoXQ/QuantLab/app/notification/application/notification"
-	appUserSync "github.com/agoXQ/QuantLab/app/notification/application/usersync"
 	domNotif "github.com/agoXQ/QuantLab/app/notification/domain/notification"
 	domPref "github.com/agoXQ/QuantLab/app/notification/domain/preference"
 	domSub "github.com/agoXQ/QuantLab/app/notification/domain/subscription"
 	infraMemory "github.com/agoXQ/QuantLab/app/notification/infrastructure/repository/memory"
 	infraPg "github.com/agoXQ/QuantLab/app/notification/infrastructure/repository/postgres"
-	infraUserSync "github.com/agoXQ/QuantLab/app/notification/infrastructure/usersync"
 	"github.com/agoXQ/QuantLab/app/notification/internal/config"
 )
 
 // ServiceContext is the composition root.
 type ServiceContext struct {
-	Config  config.Config
-	Service appNotif.Service
-	DB      *sql.DB
+	Config        config.Config
+	Service       appNotif.Service
+	Subscriptions domSub.Repository
+	DB            *sql.DB
 
-	userSync *syncRunner
+	runners []*syncRunner
 }
 
 // NewServiceContext wires the dependency graph.
@@ -44,37 +43,51 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	})
 
 	sc := &ServiceContext{
-		Config:   c,
-		Service:  svc,
-		DB:       db,
-		userSync: buildUserSync(c, svc),
+		Config:        c,
+		Service:       svc,
+		Subscriptions: subs,
+		DB:            db,
 	}
-	if sc.userSync != nil {
-		sc.userSync.start()
+	sc.runners = appendRunner(sc.runners, buildUserSync(c, svc))
+	sc.runners = appendRunner(sc.runners, buildStrategySync(c, svc, subs))
+	sc.runners = appendRunner(sc.runners, buildBacktestSync(c, svc))
+	for _, r := range sc.runners {
+		r.start()
 	}
 	return sc
 }
 
-// Close releases the database handle and shuts down the cross-service
-// event consumer. Safe to call multiple times.
+// Close releases the database handle and shuts down every cross-
+// service event consumer. Safe to call multiple times.
 func (sc *ServiceContext) Close() {
 	if sc == nil {
 		return
 	}
-	if sc.userSync != nil {
-		if sc.userSync.cancel != nil {
-			sc.userSync.cancel()
+	for _, r := range sc.runners {
+		if r == nil {
+			continue
 		}
-		if sc.userSync.done != nil {
-			<-sc.userSync.done
+		if r.cancel != nil {
+			r.cancel()
 		}
-		if sc.userSync.closer != nil {
-			_ = sc.userSync.closer.Close()
+		if r.done != nil {
+			<-r.done
+		}
+		if r.closer != nil {
+			_ = r.closer.Close()
 		}
 	}
+	sc.runners = nil
 	if sc.DB != nil {
 		_ = sc.DB.Close()
 	}
+}
+
+func appendRunner(in []*syncRunner, r *syncRunner) []*syncRunner {
+	if r == nil {
+		return in
+	}
+	return append(in, r)
 }
 
 // buildRepositories returns the repository set and the *sql.DB; nil
@@ -133,59 +146,4 @@ func openPostgres(cfg config.PostgresConfig) (*sql.DB, error) {
 		return nil, fmt.Errorf("ping postgres: %w", err)
 	}
 	return db, nil
-}
-
-// syncRunner is the small lifecycle owner returned by buildUserSync;
-// mirrors the User Service shape so a future BacktestSync etc. can
-// extend the same pattern.
-type syncRunner struct {
-	start  func()
-	cancel context.CancelFunc
-	done   chan struct{}
-	closer interface{ Close() error }
-}
-
-func buildUserSync(c config.Config, svc appNotif.Service) *syncRunner {
-	if !c.UserSync.Enabled {
-		return nil
-	}
-	if len(c.UserSync.Brokers) == 0 {
-		log.Printf("[notification] user sync enabled but no Kafka brokers; skipping")
-		return nil
-	}
-	handler := appUserSync.NewHandler(svc)
-	consumer, err := infraUserSync.NewConsumer(infraUserSync.Config{
-		Brokers: c.UserSync.Brokers,
-		Topic:   c.UserSync.Topic,
-		GroupID: c.UserSync.GroupID,
-	}, handler)
-	if err != nil {
-		log.Printf("[notification] user sync: build consumer: %v", err)
-		return nil
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	doneCh := make(chan struct{})
-	return &syncRunner{
-		start: func() {
-			go func() {
-				defer close(doneCh)
-				log.Printf("[notification] user sync started topic=%s group=%s",
-					orDefault(c.UserSync.Topic, infraUserSync.DefaultTopic),
-					orDefault(c.UserSync.GroupID, infraUserSync.DefaultGroup))
-				if err := consumer.Run(ctx); err != nil {
-					log.Printf("[notification] user sync stopped: %v", err)
-				}
-			}()
-		},
-		cancel: cancel,
-		done:   doneCh,
-		closer: consumer,
-	}
-}
-
-func orDefault(v, fallback string) string {
-	if v == "" {
-		return fallback
-	}
-	return v
 }
