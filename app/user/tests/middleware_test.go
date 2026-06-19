@@ -22,7 +22,7 @@ import (
 // the handler refuses a mismatched edit.
 func TestAuthMiddleware_BearerAndSelfEdit(t *testing.T) {
 	fx := newFixture(t)
-	issuer := token.NewJWTIssuer(token.Config{
+	issuer := token.MustNewJWTIssuer(token.Config{
 		Secret:    "test-signing-key-must-be-long-enough-32-bytes",
 		Issuer:    "quantlab.user",
 		AccessTTL: 5 * time.Minute,
@@ -66,7 +66,7 @@ func TestAuthMiddleware_BearerAndSelfEdit(t *testing.T) {
 // token (and vice versa).
 func TestAuthMiddleware_AccessRejectsRefreshToken(t *testing.T) {
 	fx := newFixture(t)
-	issuer := token.NewJWTIssuer(token.Config{
+	issuer := token.MustNewJWTIssuer(token.Config{
 		Secret:    "test-signing-key-must-be-long-enough-32-bytes",
 		Issuer:    "quantlab.user",
 		AccessTTL: 5 * time.Minute,
@@ -99,7 +99,7 @@ func TestAuthMiddleware_AccessRejectsRefreshToken(t *testing.T) {
 // the metadata subject onto the request context so logic adapters can
 // read it via UserIDFromContext.
 func TestGRPCAuthInterceptor_StampsUserID(t *testing.T) {
-	issuer := token.NewJWTIssuer(token.Config{
+	issuer := token.MustNewJWTIssuer(token.Config{
 		Secret:    "test-signing-key-must-be-long-enough-32-bytes",
 		Issuer:    "quantlab.user",
 		AccessTTL: 5 * time.Minute,

@@ -24,8 +24,17 @@ Kafka:
 # Token configures the JWT issuer. Override Secret in production with a
 # value of at least 32 bytes; the placeholder below is fine for local
 # exploration only.
+# Token configures the JWT issuer. The platform requires HS256 signing
+# keys to be at least 32 bytes; a misconfigured Secret / Keys block
+# fails the boot loudly instead of issuing weak tokens. Production
+# deployments rotate by appending a new entry to Keys, advancing
+# ActiveKeyID, and removing the retired secret on a later deploy once
+# every issued token has expired.
 Token:
-  Secret: "quantlab-user-dev-secret-change-me"
+  ActiveKeyID: "k1"
+  Keys:
+    - ID: "k1"
+      Secret: "quantlab-user-dev-secret-change-me-now-32"
   Issuer: "quantlab.user"
   AccessTTLSeconds: 1800
   RefreshTTLSeconds: 1209600

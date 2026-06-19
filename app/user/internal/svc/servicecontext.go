@@ -40,12 +40,10 @@ type ServiceContext struct {
 func NewServiceContext(c config.Config) *ServiceContext {
 	users, follows, db := buildRepositories(c)
 	hasher := password.NewBcryptHasher(c.Password.BcryptCost)
-	issuer := token.NewJWTIssuer(token.Config{
-		Secret:     c.Token.Secret,
-		Issuer:     c.Token.Issuer,
-		AccessTTL:  time.Duration(c.Token.AccessTTLSeconds) * time.Second,
-		RefreshTTL: time.Duration(c.Token.RefreshTTLSeconds) * time.Second,
-	})
+	issuer, err := buildIssuer(c)
+	if err != nil {
+		log.Fatalf("[user] token issuer: %v", err)
+	}
 	publisher := buildPublisher(c)
 
 	svc := appUser.NewService(appUser.Dependencies{
@@ -164,4 +162,36 @@ func buildPublisher(c config.Config) domevent.Publisher {
 		return infraEvent.Noop{}
 	}
 	return infraEvent.NewKafkaPublisher(c.Kafka.Brokers)
+}
+
+// buildIssuer turns the platform TokenConfig into a rotation-aware
+// issuer. The MVP supports two shapes:
+//
+//   - Keys: explicit list of id+secret rows (preferred). ActiveKeyID
+//     selects which row mints new tokens; defaults to the first.
+//   - Secret: legacy single-key config; wrapped in a one-key KeySet so
+//     callers that have not migrated still boot.
+//
+// The function fails closed on a missing / short secret so a misconfigured
+// deployment does not silently issue tokens with a guessable key.
+func buildIssuer(c config.Config) (*token.JWTIssuer, error) {
+	cfg := token.Config{
+		Issuer:     c.Token.Issuer,
+		AccessTTL:  time.Duration(c.Token.AccessTTLSeconds) * time.Second,
+		RefreshTTL: time.Duration(c.Token.RefreshTTLSeconds) * time.Second,
+	}
+	if len(c.Token.Keys) > 0 {
+		signing := make([]token.SigningKey, 0, len(c.Token.Keys))
+		for _, k := range c.Token.Keys {
+			signing = append(signing, token.SigningKey{ID: k.ID, Secret: k.Secret})
+		}
+		ks, err := token.NewKeySet(c.Token.ActiveKeyID, signing)
+		if err != nil {
+			return nil, err
+		}
+		cfg.Keys = ks
+	} else {
+		cfg.Secret = c.Token.Secret
+	}
+	return token.NewJWTIssuer(cfg)
 }

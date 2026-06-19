@@ -50,12 +50,24 @@ type KafkaConfig struct {
 	Brokers []string `json:",optional"`
 }
 
-// TokenConfig configures the JWT issuer.
+// TokenConfig configures the JWT issuer. Production deployments
+// should populate Keys (one row per id+secret) so secret rotation is
+// just an additive config change. Secret remains for backwards
+// compatibility; when set without Keys it is wrapped in a single-key
+// KeySet at boot.
 type TokenConfig struct {
-	Secret            string `json:",optional"`
-	Issuer            string `json:",default=quantlab.user"`
-	AccessTTLSeconds  int    `json:",default=1800"`
-	RefreshTTLSeconds int    `json:",default=1209600"`
+	Secret            string             `json:",optional"`
+	ActiveKeyID       string             `json:",optional"`
+	Keys              []SigningKeyConfig `json:",optional"`
+	Issuer            string             `json:",default=quantlab.user"`
+	AccessTTLSeconds  int                `json:",default=1800"`
+	RefreshTTLSeconds int                `json:",default=1209600"`
+}
+
+// SigningKeyConfig is one row of the rotation-aware key set.
+type SigningKeyConfig struct {
+	ID     string `json:",optional"`
+	Secret string `json:""`
 }
 
 // PasswordConfig configures the bcrypt hasher.

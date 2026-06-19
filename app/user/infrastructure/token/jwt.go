@@ -1,6 +1,7 @@
 // Package token provides a JWT-backed TokenIssuer for the User Service.
-// The MVP issues HS256 tokens; production swaps in a key-rotation aware
-// issuer behind the same TokenIssuer port.
+// The MVP issues HS256 tokens via a KeySet so secret rotation drops in
+// without rewiring callers; production swaps in a JWKS-backed loader
+// behind the same TokenIssuer port.
 package token
 
 import (
@@ -36,8 +37,13 @@ const (
 
 // Config configures the JWT issuer.
 type Config struct {
-	// Secret is the HS256 signing key. Must be at least 32 bytes in
-	// production; tests may supply a shorter constant.
+	// Keys is the rotation-aware key set. New deployments should
+	// supply at least one key; legacy callers may still set Secret.
+	Keys *KeySet
+	// Secret is the legacy single-key shim. Provided for backwards
+	// compatibility with callers that have not yet migrated to Keys;
+	// when set without Keys the issuer wraps it in a single-key
+	// KeySet so the rest of the path stays uniform.
 	Secret string
 	// Issuer is the platform-wide iss claim.
 	Issuer string
@@ -51,12 +57,13 @@ type Config struct {
 
 // JWTIssuer implements TokenIssuer with HS256 JWTs.
 type JWTIssuer struct {
-	cfg Config
+	cfg  Config
+	keys *KeySet
 }
 
 // NewJWTIssuer wires the issuer; defaults are filled in for missing
-// fields so callers only have to supply Secret + Issuer.
-func NewJWTIssuer(cfg Config) *JWTIssuer {
+// fields so callers only have to supply Keys + Issuer.
+func NewJWTIssuer(cfg Config) (*JWTIssuer, error) {
 	if cfg.AccessTTL <= 0 {
 		cfg.AccessTTL = 30 * time.Minute
 	}
@@ -69,13 +76,31 @@ func NewJWTIssuer(cfg Config) *JWTIssuer {
 	if cfg.Issuer == "" {
 		cfg.Issuer = "quantlab.user"
 	}
-	return &JWTIssuer{cfg: cfg}
+	keys := cfg.Keys
+	if keys == nil {
+		built, err := SingleKeySet("default", cfg.Secret)
+		if err != nil {
+			return nil, err
+		}
+		keys = built
+	}
+	return &JWTIssuer{cfg: cfg, keys: keys}, nil
+}
+
+// MustNewJWTIssuer is the panicking counterpart used by tests and
+// other paths that already validate the configuration upstream.
+func MustNewJWTIssuer(cfg Config) *JWTIssuer {
+	issuer, err := NewJWTIssuer(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return issuer
 }
 
 // Issue mints a fresh access + refresh token pair.
 func (i *JWTIssuer) Issue(userID int64) (appUser.TokenPair, error) {
-	if i.cfg.Secret == "" {
-		return appUser.TokenPair{}, fmt.Errorf("token: signing secret is empty")
+	if i == nil || i.keys == nil {
+		return appUser.TokenPair{}, fmt.Errorf("token: issuer not initialised")
 	}
 	now := i.cfg.Clock()
 	access, err := i.signClaims(now, userID, audienceAccess, i.cfg.AccessTTL)
@@ -103,7 +128,12 @@ func (i *JWTIssuer) Verify(token string, kind TokenKind) (int64, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, userErr.ErrTokenInvalid
 		}
-		return []byte(i.cfg.Secret), nil
+		kid, _ := t.Header["kid"].(string)
+		secret, _, ok := i.keys.Lookup(kid)
+		if !ok {
+			return nil, userErr.ErrTokenInvalid
+		}
+		return []byte(secret), nil
 	})
 	if err != nil {
 		if isExpired(err) {
@@ -126,6 +156,7 @@ func (i *JWTIssuer) Verify(token string, kind TokenKind) (int64, error) {
 }
 
 func (i *JWTIssuer) signClaims(now time.Time, userID int64, kind string, ttl time.Duration) (string, error) {
+	active := i.keys.Active()
 	claims := jwt.RegisteredClaims{
 		Issuer:    i.cfg.Issuer,
 		Subject:   strconv.FormatInt(userID, 10),
@@ -135,7 +166,8 @@ func (i *JWTIssuer) signClaims(now time.Time, userID int64, kind string, ttl tim
 		ID:        uuid.NewString(),
 	}
 	tok := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	return tok.SignedString([]byte(i.cfg.Secret))
+	tok.Header["kid"] = active.ID
+	return tok.SignedString([]byte(active.Secret))
 }
 
 func isExpired(err error) bool {
