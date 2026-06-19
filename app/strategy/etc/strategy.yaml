@@ -20,3 +20,13 @@ Postgres:
 # Brokers empty to use the no-op publisher locally.
 Kafka:
   Brokers: []
+
+# BacktestSync subscribes to backtest-events and flips the strategy
+# aggregate into BACKTESTED on every BacktestFinished event. Disabled
+# by default so a vanilla MVP boot does not require Kafka; flip
+# Enabled and fill Brokers once the Backtest engine is wired.
+BacktestSync:
+  Enabled: false
+  Brokers: []
+  Topic: backtest-events
+  GroupID: strategy-backtest-sync

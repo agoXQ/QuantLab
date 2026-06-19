@@ -11,9 +11,10 @@ import "github.com/zeromicro/go-zero/zrpc"
 type Config struct {
 	zrpc.RpcServerConf
 
-	HttpPort int            `json:",default=8083"`
-	Postgres PostgresConfig `json:",optional"`
-	Kafka    KafkaConfig    `json:",optional"`
+	HttpPort     int                `json:",default=8083"`
+	Postgres     PostgresConfig     `json:",optional"`
+	Kafka        KafkaConfig        `json:",optional"`
+	BacktestSync BacktestSyncConfig `json:",optional"`
 }
 
 // PostgresConfig configures the Postgres connection used to persist
@@ -33,4 +34,16 @@ type PostgresConfig struct {
 // service uses the no-op publisher so MVP runs locally.
 type KafkaConfig struct {
 	Brokers []string `json:",optional"`
+}
+
+
+// BacktestSyncConfig configures the Backtest events consumer. When
+// Enabled is true the service subscribes to backtest-events and flips
+// strategies into BACKTESTED on every BacktestFinished. Disabled by
+// default so a vanilla MVP boot does not require Kafka.
+type BacktestSyncConfig struct {
+	Enabled bool     `json:",default=false"`
+	Brokers []string `json:",optional"`
+	Topic   string   `json:",default=backtest-events"`
+	GroupID string   `json:",default=strategy-backtest-sync"`
 }

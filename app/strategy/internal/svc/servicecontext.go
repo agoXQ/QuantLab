@@ -18,6 +18,8 @@ import (
 	domfork "github.com/agoXQ/QuantLab/app/strategy/domain/fork"
 	domstrategy "github.com/agoXQ/QuantLab/app/strategy/domain/strategy"
 	domversion "github.com/agoXQ/QuantLab/app/strategy/domain/version"
+	appBacktestSync "github.com/agoXQ/QuantLab/app/strategy/application/backtestsync"
+	infraBacktestSync "github.com/agoXQ/QuantLab/app/strategy/infrastructure/backtestsync"
 	infraEvent "github.com/agoXQ/QuantLab/app/strategy/infrastructure/event"
 	infraMemory "github.com/agoXQ/QuantLab/app/strategy/infrastructure/repository/memory"
 	infraPg "github.com/agoXQ/QuantLab/app/strategy/infrastructure/repository/postgres"
@@ -29,6 +31,12 @@ type ServiceContext struct {
 	Config      config.Config
 	StrategySvc appStrategy.Service
 	DB          *sql.DB
+
+	// backtestSyncCancel stops the Backtest events consumer; nil when
+	// the consumer is disabled in config.
+	backtestSyncCancel context.CancelFunc
+	backtestSyncDone   chan struct{}
+	backtestSyncCloser interface{ Close() error }
 }
 
 // NewServiceContext wires the dependency graph.
@@ -44,11 +52,20 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		Clock:      time.Now,
 	})
 
-	return &ServiceContext{
-		Config:      c,
-		StrategySvc: svc,
-		DB:          db,
+	startBacktestSync, cancelBacktestSync, doneBacktestSync, closerBacktestSync := buildBacktestSync(c, svc)
+
+	sc := &ServiceContext{
+		Config:             c,
+		StrategySvc:        svc,
+		DB:                 db,
+		backtestSyncCancel: cancelBacktestSync,
+		backtestSyncDone:   doneBacktestSync,
+		backtestSyncCloser: closerBacktestSync,
 	}
+	if startBacktestSync != nil {
+		startBacktestSync()
+	}
+	return sc
 }
 
 // Close releases the underlying database handle. Safe to call multiple
@@ -56,6 +73,15 @@ func NewServiceContext(c config.Config) *ServiceContext {
 func (sc *ServiceContext) Close() {
 	if sc == nil {
 		return
+	}
+	if sc.backtestSyncCancel != nil {
+		sc.backtestSyncCancel()
+	}
+	if sc.backtestSyncDone != nil {
+		<-sc.backtestSyncDone
+	}
+	if sc.backtestSyncCloser != nil {
+		_ = sc.backtestSyncCloser.Close()
 	}
 	if sc.DB != nil {
 		_ = sc.DB.Close()
@@ -131,4 +157,46 @@ func buildPublisher(c config.Config) domevent.Publisher {
 		return infraEvent.Noop{}
 	}
 	return infraEvent.NewKafkaPublisher(c.Kafka.Brokers)
+}
+
+
+// buildBacktestSync wires the Backtest events consumer + handler. Like
+// the matching helper in the Backtest service, the function is
+// forgiving: any configuration error is logged and the consumer is
+// left disabled so a misconfigured Kafka broker list does not take
+// the strategy service down.
+func buildBacktestSync(
+	c config.Config,
+	svc appStrategy.Service,
+) (start func(), cancel context.CancelFunc, done chan struct{}, closer interface{ Close() error }) {
+	if !c.BacktestSync.Enabled {
+		return nil, nil, nil, nil
+	}
+	if len(c.BacktestSync.Brokers) == 0 {
+		log.Printf("[strategy] backtest sync enabled but no Kafka brokers; skipping")
+		return nil, nil, nil, nil
+	}
+	handler := appBacktestSync.NewMarkBacktestedHandler(svc)
+	consumer, err := infraBacktestSync.NewConsumer(infraBacktestSync.Config{
+		Brokers: c.BacktestSync.Brokers,
+		Topic:   c.BacktestSync.Topic,
+		GroupID: c.BacktestSync.GroupID,
+	}, handler)
+	if err != nil {
+		log.Printf("[strategy] backtest sync: build consumer: %v", err)
+		return nil, nil, nil, nil
+	}
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	doneCh := make(chan struct{})
+	startFn := func() {
+		go func() {
+			defer close(doneCh)
+			log.Printf("[strategy] backtest sync started topic=%s group=%s", c.BacktestSync.Topic, c.BacktestSync.GroupID)
+			if err := consumer.Run(ctx); err != nil {
+				log.Printf("[strategy] backtest sync stopped: %v", err)
+			}
+		}()
+	}
+	return startFn, cancelFn, doneCh, consumer
 }
