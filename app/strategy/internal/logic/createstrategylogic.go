@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appStrategy "github.com/agoXQ/QuantLab/app/strategy/application/strategy"
 	"github.com/agoXQ/QuantLab/app/strategy/internal/svc"
 	"github.com/agoXQ/QuantLab/app/strategy/pb"
 
@@ -23,8 +24,17 @@ func NewCreateStrategyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Cr
 	}
 }
 
+// CreateStrategy delegates to the application service so HTTP and gRPC
+// share the same business rules.
 func (l *CreateStrategyLogic) CreateStrategy(in *pb.CreateStrategyRequest) (*pb.CreateStrategyResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.CreateStrategyResponse{}, nil
+	res, err := l.svcCtx.StrategySvc.Create(l.ctx, appStrategy.CreateRequest{
+		Title:       trimSpaces(in.Title),
+		Description: trimSpaces(in.Description),
+		Category:    trimSpaces(in.Category),
+		Tags:        in.Tags,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.CreateStrategyResponse{StrategyId: res.Strategy.ID}, nil
 }

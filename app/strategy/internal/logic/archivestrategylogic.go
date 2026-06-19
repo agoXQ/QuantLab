@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appStrategy "github.com/agoXQ/QuantLab/app/strategy/application/strategy"
 	"github.com/agoXQ/QuantLab/app/strategy/internal/svc"
 	"github.com/agoXQ/QuantLab/app/strategy/pb"
 
@@ -23,8 +24,13 @@ func NewArchiveStrategyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *A
 	}
 }
 
+// ArchiveStrategy delegates to the application service so archival is
+// driven by the same lifecycle rules HTTP uses.
 func (l *ArchiveStrategyLogic) ArchiveStrategy(in *pb.ArchiveStrategyRequest) (*pb.ArchiveStrategyResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if _, err := l.svcCtx.StrategySvc.Archive(l.ctx, appStrategy.ArchiveRequest{
+		StrategyID: in.StrategyId,
+	}); err != nil {
+		return nil, err
+	}
 	return &pb.ArchiveStrategyResponse{}, nil
 }

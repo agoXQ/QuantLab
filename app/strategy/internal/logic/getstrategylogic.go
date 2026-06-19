@@ -24,7 +24,9 @@ func NewGetStrategyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetSt
 }
 
 func (l *GetStrategyLogic) GetStrategy(in *pb.GetStrategyRequest) (*pb.GetStrategyResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetStrategyResponse{}, nil
+	st, err := l.svcCtx.StrategySvc.Get(l.ctx, in.StrategyId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetStrategyResponse{Strategy: strategyToProto(st)}, nil
 }

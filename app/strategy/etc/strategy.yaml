@@ -1,6 +1,22 @@
 Name: strategy.rpc
-ListenOn: 0.0.0.0:8080
+ListenOn: 0.0.0.0:8084
+HttpPort: 8085
 Etcd:
   Hosts:
   - 127.0.0.1:2379
   Key: strategy.rpc
+
+# Postgres holds the Strategy aggregate, append-only versions, and the
+# fork ledger. Leave DSN empty to fall back to the in-memory store
+# (CI smoke tests, local exploration without a database).
+Postgres:
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_strategy?sslmode=disable"
+  MaxOpenConns: 10
+  MaxIdleConns: 2
+  AutoMigrate: true
+
+# Kafka publishes lifecycle events (created/published/archived/...) so
+# downstream services (Backtest, Notification, Search) can react. Leave
+# Brokers empty to use the no-op publisher locally.
+Kafka:
+  Brokers: []

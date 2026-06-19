@@ -24,7 +24,8 @@ func NewDeleteStrategyLogic(ctx context.Context, svcCtx *svc.ServiceContext) *De
 }
 
 func (l *DeleteStrategyLogic) DeleteStrategy(in *pb.DeleteStrategyRequest) (*pb.DeleteStrategyResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if err := l.svcCtx.StrategySvc.Delete(l.ctx, in.StrategyId, 0); err != nil {
+		return nil, err
+	}
 	return &pb.DeleteStrategyResponse{}, nil
 }

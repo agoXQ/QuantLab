@@ -23,8 +23,16 @@ func NewListVersionsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *List
 	}
 }
 
+// ListVersions returns every version of a strategy, newest-first; the
+// application service handles ordering and limits.
 func (l *ListVersionsLogic) ListVersions(in *pb.ListVersionsRequest) (*pb.ListVersionsResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.ListVersionsResponse{}, nil
+	versions, err := l.svcCtx.StrategySvc.ListVersions(l.ctx, in.StrategyId, 0)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]*pb.StrategyVersion, 0, len(versions))
+	for _, v := range versions {
+		out = append(out, versionToProto(v))
+	}
+	return &pb.ListVersionsResponse{Versions: out}, nil
 }

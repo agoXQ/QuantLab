@@ -3,7 +3,14 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
 
+	"github.com/gin-gonic/gin"
+
+	httpHandler "github.com/agoXQ/QuantLab/app/strategy/interfaces/http"
 	"github.com/agoXQ/QuantLab/app/strategy/internal/config"
 	"github.com/agoXQ/QuantLab/app/strategy/internal/server"
 	"github.com/agoXQ/QuantLab/app/strategy/internal/svc"
@@ -33,6 +40,33 @@ func main() {
 		}
 	})
 	defer s.Stop()
+	defer ctx.Close()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		<-sigCh
+		fmt.Println("shutdown signal received, releasing resources...")
+		ctx.Close()
+		s.Stop()
+		os.Exit(0)
+	}()
+
+	go func() {
+		gin.SetMode(gin.ReleaseMode)
+		router := gin.New()
+		router.Use(gin.Recovery())
+
+		apiGroup := router.Group("/api/v1/strategies")
+		handler := httpHandler.NewHandler(ctx.StrategySvc)
+		handler.RegisterRoutes(apiGroup)
+
+		addr := fmt.Sprintf("0.0.0.0:%d", c.HttpPort)
+		fmt.Printf("Starting HTTP server at %s...\n", addr)
+		if err := http.ListenAndServe(addr, router); err != nil {
+			fmt.Printf("HTTP server error: %v\n", err)
+		}
+	}()
 
 	fmt.Printf("Starting rpc server at %s...\n", c.ListenOn)
 	s.Start()

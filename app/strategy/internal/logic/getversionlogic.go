@@ -23,8 +23,12 @@ func NewGetVersionLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetVer
 	}
 }
 
+// GetVersion fetches a single version by id; access checks (private
+// strategies) are enforced inside the application service.
 func (l *GetVersionLogic) GetVersion(in *pb.GetVersionRequest) (*pb.GetVersionResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetVersionResponse{}, nil
+	v, err := l.svcCtx.StrategySvc.GetVersion(l.ctx, in.VersionId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetVersionResponse{Version: versionToProto(v)}, nil
 }

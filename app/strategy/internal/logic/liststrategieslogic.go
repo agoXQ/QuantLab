@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appStrategy "github.com/agoXQ/QuantLab/app/strategy/application/strategy"
 	"github.com/agoXQ/QuantLab/app/strategy/internal/svc"
 	"github.com/agoXQ/QuantLab/app/strategy/pb"
 
@@ -23,8 +24,19 @@ func NewListStrategiesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Li
 	}
 }
 
+// ListStrategies forwards filters to the application service. Cursor
+// pagination on the wire is left empty until the platform settles on
+// an opaque token format; clients use Limit + Offset for now.
 func (l *ListStrategiesLogic) ListStrategies(in *pb.ListStrategiesRequest) (*pb.ListStrategiesResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.ListStrategiesResponse{}, nil
+	items, err := l.svcCtx.StrategySvc.List(l.ctx, appStrategy.ListQuery{
+		AuthorID: in.AuthorId,
+		Status:   lifecycleFromProto(in.Status),
+		Limit:    int(in.Limit),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.ListStrategiesResponse{
+		Strategies: listProtoFromDomain(items),
+	}, nil
 }
