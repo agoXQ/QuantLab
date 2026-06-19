@@ -43,3 +43,27 @@ Formula:
 Engine:
   AnnualisationDays: 252
   RiskFreeRate: 0
+
+# StrategySync subscribes to the Strategy service's Kafka topic and
+# auto-creates a baseline backtest each time a strategy is published.
+# Disabled by default so a vanilla MVP boot does not require Kafka
+# nor a running Strategy service; flip Enabled and fill in Brokers /
+# Strategy.Endpoints once both services are live.
+StrategySync:
+  Enabled: false
+  Brokers: []
+  Topic: strategy-events
+  GroupID: backtest-strategy-sync
+  Strategy:
+    Endpoints:
+    - 127.0.0.1:8084
+    Timeout: 2000
+    NonBlock: true
+  Baseline:
+    Universe:
+    - "000001"
+    LookbackDays: 365
+    InitialCapital: 1000000
+    Benchmark: "000300"
+    AutoSubmit: true
+    Tag: auto-baseline

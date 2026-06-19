@@ -29,7 +29,12 @@ import (
 	infraMemory "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/memory"
 	infraPg "github.com/agoXQ/QuantLab/app/backtest/infrastructure/repository/postgres"
 	infraStrategy "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategy"
+	infraStrategySync "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategysync"
+	appStrategySync "github.com/agoXQ/QuantLab/app/backtest/application/strategysync"
 	infraWorker "github.com/agoXQ/QuantLab/app/backtest/infrastructure/worker"
+
+	"github.com/zeromicro/go-zero/core/discov"
+	"github.com/zeromicro/go-zero/zrpc"
 
 	domqueue "github.com/agoXQ/QuantLab/app/backtest/domain/queue"
 
@@ -70,6 +75,13 @@ type ServiceContext struct {
 	// during graceful shutdown.
 	Queue   domqueue.Queue
 	Workers *infraWorker.Pool
+
+	// strategySyncCancel stops the Strategy events consumer; nil when
+	// the consumer is disabled in config.
+	strategySyncCancel context.CancelFunc
+	strategySyncDone   chan struct{}
+	strategySyncCloser interface{ Close() error }
+	strategyClient     zrpc.Client
 }
 
 // NewServiceContext wires the dependency graph.
@@ -163,17 +175,27 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	}
 	reconcileCancel()
 
-	return &ServiceContext{
-		Config:         c,
-		BacktestSvc:    svc,
-		MarketProvider: inMemMarket,
-		FormulaPort:    inMemFormula,
-		Executor:       executor,
-		DB:             db,
-		MarketDataDB:   stack.db,
-		Queue:          queueImpl,
-		Workers:        pool,
+	startStrategySync, syncCancel, syncDone, syncCloser, strategyClient := buildStrategySync(c, svc, marketProvider)
+
+	sc := &ServiceContext{
+		Config:             c,
+		BacktestSvc:        svc,
+		MarketProvider:     inMemMarket,
+		FormulaPort:        inMemFormula,
+		Executor:           executor,
+		DB:                 db,
+		MarketDataDB:       stack.db,
+		Queue:              queueImpl,
+		Workers:            pool,
+		strategySyncCancel: syncCancel,
+		strategySyncDone:   syncDone,
+		strategySyncCloser: syncCloser,
+		strategyClient:     strategyClient,
 	}
+	if startStrategySync != nil {
+		startStrategySync()
+	}
+	return sc
 }
 
 // Close drains the worker pool and closes the queue. Safe to call once;
@@ -182,6 +204,15 @@ func NewServiceContext(c config.Config) *ServiceContext {
 func (sc *ServiceContext) Close() {
 	if sc == nil {
 		return
+	}
+	if sc.strategySyncCancel != nil {
+		sc.strategySyncCancel()
+	}
+	if sc.strategySyncDone != nil {
+		<-sc.strategySyncDone
+	}
+	if sc.strategySyncCloser != nil {
+		_ = sc.strategySyncCloser.Close()
 	}
 	if sc.Workers != nil {
 		sc.Workers.Stop()
@@ -309,4 +340,88 @@ func buildFormulaStack() (appFormula.Service, appFormula.EvaluatorService) {
 	evaluator := formulaInfraEval.New(formulaInfraInd.NewLibrary(), varReg)
 	evalSvc := appFormula.NewEvaluatorService(formulaSvc, evaluator)
 	return formulaSvc, evalSvc
+}
+
+
+// buildStrategySync wires the Strategy events consumer + baseline
+// handler. The function is forgiving: any configuration error is logged
+// and the consumer is left disabled so a misconfigured Kafka broker
+// list does not take the backtest service down. The returned start
+// closure is invoked once the ServiceContext is built so the consumer
+// only runs after the application service is ready.
+func buildStrategySync(
+	c config.Config,
+	svc appBacktest.Service,
+	marketProvider dommarket.Provider,
+) (start func(), cancel context.CancelFunc, done chan struct{}, closer interface{ Close() error }, client zrpc.Client) {
+	if !c.StrategySync.Enabled {
+		return nil, nil, nil, nil, nil
+	}
+	if len(c.StrategySync.Brokers) == 0 {
+		log.Printf("[backtest] strategy sync enabled but no Kafka brokers; skipping")
+		return nil, nil, nil, nil, nil
+	}
+	clientConf, err := buildStrategyClientConf(c.StrategySync.Strategy)
+	if err != nil {
+		log.Printf("[backtest] strategy sync: invalid strategy client config: %v", err)
+		return nil, nil, nil, nil, nil
+	}
+	cli, err := zrpc.NewClient(clientConf)
+	if err != nil {
+		log.Printf("[backtest] strategy sync: dial strategy service: %v", err)
+		return nil, nil, nil, nil, nil
+	}
+	resolver := infraStrategySync.NewGRPCResolver(cli)
+
+	baseline := c.StrategySync.Baseline
+	handler := appStrategySync.NewBaselineHandler(appStrategySync.Config{
+		Universe:       baseline.Universe,
+		Lookback:       time.Duration(baseline.LookbackDays) * 24 * time.Hour,
+		InitialCapital: baseline.InitialCapital,
+		Benchmark:      baseline.Benchmark,
+		AutoSubmit:     baseline.AutoSubmit,
+		Tag:            baseline.Tag,
+	}, resolver, svc, marketProvider, time.Now)
+
+	consumer, err := infraStrategySync.NewConsumer(infraStrategySync.Config{
+		Brokers: c.StrategySync.Brokers,
+		Topic:   c.StrategySync.Topic,
+		GroupID: c.StrategySync.GroupID,
+	}, handler)
+	if err != nil {
+		log.Printf("[backtest] strategy sync: build consumer: %v", err)
+		return nil, nil, nil, nil, cli
+	}
+
+	ctx, cancelFn := context.WithCancel(context.Background())
+	doneCh := make(chan struct{})
+	startFn := func() {
+		go func() {
+			defer close(doneCh)
+			log.Printf("[backtest] strategy sync started topic=%s group=%s", c.StrategySync.Topic, c.StrategySync.GroupID)
+			if err := consumer.Run(ctx); err != nil {
+				log.Printf("[backtest] strategy sync stopped: %v", err)
+			}
+		}()
+	}
+	return startFn, cancelFn, doneCh, consumer, cli
+}
+
+// buildStrategyClientConf maps the slimmed-down config struct into the
+// full zrpc.RpcClientConf. Direct endpoints take precedence; falling
+// back to Etcd-discovered targets means MVP deployments running both
+// services on a single host need only Endpoints set.
+func buildStrategyClientConf(cfg config.StrategyClientConfig) (zrpc.RpcClientConf, error) {
+	out := zrpc.RpcClientConf{
+		Endpoints: cfg.Endpoints,
+		Timeout:   cfg.Timeout,
+		NonBlock:  cfg.NonBlock,
+	}
+	if len(cfg.Etcd.Hosts) > 0 {
+		out.Etcd = discov.EtcdConf{Hosts: cfg.Etcd.Hosts, Key: cfg.Etcd.Key}
+	}
+	if len(out.Endpoints) == 0 && len(out.Etcd.Hosts) == 0 {
+		return zrpc.RpcClientConf{}, fmt.Errorf("either Endpoints or Etcd.Hosts must be set")
+	}
+	return out, nil
 }

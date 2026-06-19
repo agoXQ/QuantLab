@@ -18,7 +18,8 @@ type Config struct {
 	MarketData MarketDataConfig `json:",optional"`
 	Formula    FormulaConfig    `json:",optional"`
 	Engine     EngineConfig     `json:",optional"`
-	Queue      QueueConfig      `json:",optional"`
+	Queue      QueueConfig         `json:",optional"`
+	StrategySync StrategySyncConfig `json:",optional"`
 }
 
 // PostgresConfig configures the Postgres connection used to persist jobs,
@@ -96,4 +97,50 @@ type QueueConfig struct {
 	// the timeout; that is the safer default for the MVP because
 	// backtests can legitimately take several minutes.
 	JobTimeoutSeconds int `json:",default=0"`
+}
+
+// StrategySync configures the Strategy events consumer.  When Enabled is
+// true the service subscribes to the Strategy service's Kafka topic and
+// auto-creates a baseline backtest on every StrategyPublished event.
+// Brokers / Topic / GroupID share the same defaults as the publisher
+// side so a vanilla MVP deploy needs only Enabled=true and a Kafka
+// broker list. Strategy.Endpoints points the gRPC resolver at the
+// Strategy service so the consumer can materialise the version body.
+type StrategySyncConfig struct {
+	Enabled  bool     `json:",default=false"`
+	Brokers  []string `json:",optional"`
+	Topic    string   `json:",default=strategy-events"`
+	GroupID  string   `json:",default=backtest-strategy-sync"`
+	Strategy StrategyClientConfig `json:",optional"`
+	Baseline BaselineConfig       `json:",optional"`
+}
+
+// StrategyClientConfig is the slice of zrpc client configuration the
+// consumer needs. Direct endpoints win over Etcd when both are set,
+// matching the platform's standard discovery rules.
+type StrategyClientConfig struct {
+	Endpoints []string `json:",optional"`
+	Etcd      EtcdRef  `json:",optional"`
+	Timeout   int64    `json:",default=2000"`
+	NonBlock  bool     `json:",default=true"`
+}
+
+// EtcdRef is a minimal Etcd discovery descriptor; mirrors zrpc's shape
+// so the YAML cleanly maps onto zrpc.RpcClientConf without us having to
+// embed the full type.
+type EtcdRef struct {
+	Hosts []string `json:",optional"`
+	Key   string   `json:",optional"`
+}
+
+// BaselineConfig configures the baseline run produced for every
+// StrategyPublished event. All fields are optional; the handler fills
+// in production-sane defaults.
+type BaselineConfig struct {
+	Universe       []string `json:",optional"`
+	LookbackDays   int      `json:",default=365"`
+	InitialCapital float64  `json:",default=1000000"`
+	Benchmark      string   `json:",default=000300"`
+	AutoSubmit     bool     `json:",default=true"`
+	Tag            string   `json:",default=auto-baseline"`
 }
