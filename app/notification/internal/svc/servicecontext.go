@@ -48,7 +48,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		Subscriptions: subs,
 		DB:            db,
 	}
-	sc.runners = appendRunner(sc.runners, buildUserSync(c, svc))
+	sc.runners = appendRunner(sc.runners, buildUserSync(c, svc, subs))
 	sc.runners = appendRunner(sc.runners, buildStrategySync(c, svc, subs))
 	sc.runners = appendRunner(sc.runners, buildBacktestSync(c, svc))
 	for _, r := range sc.runners {

@@ -124,3 +124,69 @@ func TestStrategySync_ForkedNotifiesSubscribers(t *testing.T) {
 		t.Fatalf("forking creator must not be notified, got %d", len(out.Items))
 	}
 }
+
+
+// TestStrategySync_PublishedReachesAuthorFollowers seeds an
+// ("author", followee) subscription and confirms the follower
+// receives the publish fan-out without an explicit strategy
+// subscription.
+func TestStrategySync_PublishedReachesAuthorFollowers(t *testing.T) {
+	svc, subs, handler := newStrategySyncFixture(t)
+	ctx := context.Background()
+	if _, err := svc.CreateSubscription(ctx, appNotif.CreateSubscriptionInput{
+		SubscriberID: 55,
+		ObjectType:   "author",
+		ObjectID:     999,
+	}); err != nil {
+		t.Fatalf("seed author sub: %v", err)
+	}
+	_ = subs
+	env := strategysync.Envelope{
+		EventID:   "pub-author-1",
+		EventType: strategysync.EventStrategyPublished,
+		Payload: map[string]any{
+			"strategy_id": float64(2),
+			"author_id":   float64(999),
+		},
+	}
+	raw, _ := json.Marshal(env)
+	if err := infraStrategySync.Dispatch(ctx, handler, raw); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	out, _ := svc.ListNotifications(ctx, appNotif.ListNotificationsInput{UserID: 55, Limit: 10})
+	if len(out.Items) != 1 {
+		t.Fatalf("author follower expected 1 notification, got %d", len(out.Items))
+	}
+}
+
+// TestStrategySync_RespectsInAppPreference toggles the recipient's
+// preference off and confirms the fan-out skips them.
+func TestStrategySync_RespectsInAppPreference(t *testing.T) {
+	svc, _, handler := newStrategySyncFixture(t)
+	ctx := context.Background()
+	if _, err := svc.CreateSubscription(ctx, appNotif.CreateSubscriptionInput{
+		SubscriberID: 66,
+		ObjectType:   "strategy",
+		ObjectID:     3,
+	}); err != nil {
+		t.Fatalf("seed: %v", err)
+	}
+	if _, err := svc.UpdatePreferences(ctx, appNotif.UpdatePreferencesInput{
+		UserID: 66, InAppEnabled: false,
+	}); err != nil {
+		t.Fatalf("toggle off: %v", err)
+	}
+	env := strategysync.Envelope{
+		EventID:   "pub-pref-1",
+		EventType: strategysync.EventStrategyPublished,
+		Payload:   map[string]any{"strategy_id": float64(3)},
+	}
+	raw, _ := json.Marshal(env)
+	if err := infraStrategySync.Dispatch(ctx, handler, raw); err != nil {
+		t.Fatalf("dispatch: %v", err)
+	}
+	out, _ := svc.ListNotifications(ctx, appNotif.ListNotificationsInput{UserID: 66, Limit: 10})
+	if len(out.Items) != 0 {
+		t.Fatalf("preference-off recipient should not be notified, got %d", len(out.Items))
+	}
+}

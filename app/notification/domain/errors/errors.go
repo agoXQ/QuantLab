@@ -49,6 +49,7 @@ var (
 	ErrAlreadyRead          = New(20060, "notification already read")
 	ErrAlreadyDeleted       = New(20061, "notification already deleted")
 	ErrSubscriptionConflict = New(20062, "subscription already exists")
+	ErrInAppDisabled        = New(20063, "in-app delivery disabled by recipient")
 )
 
 // 3xxxx — Authentication / authorisation errors.

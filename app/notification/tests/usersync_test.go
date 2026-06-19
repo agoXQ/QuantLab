@@ -14,18 +14,23 @@ import (
 	infraUserSync "github.com/agoXQ/QuantLab/app/notification/infrastructure/usersync"
 )
 
+func newUserSyncFixture() (appNotif.Service, *infraMemory.SubscriptionRepository, *appUserSync.Handler) {
+	subs := infraMemory.NewSubscriptionRepository()
+	svc := appNotif.NewService(appNotif.Dependencies{
+		Notifications: infraMemory.NewNotificationRepository(),
+		Preferences:   infraMemory.NewPreferenceRepository(),
+		Subscriptions: subs,
+		Clock:         func() time.Time { return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC) },
+	})
+	handler := appUserSync.NewHandler(svc, subs, func() time.Time { return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC) })
+	return svc, subs, handler
+}
+
 // TestUserSync_FollowedCreatesNotification confirms a UserFollowed
 // envelope hits the application service and produces a FOLLOW row
 // addressed at the followee.
 func TestUserSync_FollowedCreatesNotification(t *testing.T) {
-	notifs := infraMemory.NewNotificationRepository()
-	svc := appNotif.NewService(appNotif.Dependencies{
-		Notifications: notifs,
-		Preferences:   infraMemory.NewPreferenceRepository(),
-		Subscriptions: infraMemory.NewSubscriptionRepository(),
-		Clock:         func() time.Time { return time.Date(2026, 6, 1, 12, 0, 0, 0, time.UTC) },
-	})
-	handler := appUserSync.NewHandler(svc)
+	svc, subs, handler := newUserSyncFixture()
 
 	env := usersync.Envelope{
 		EventID:       "evt-1",
@@ -62,7 +67,15 @@ func TestUserSync_FollowedCreatesNotification(t *testing.T) {
 		t.Fatalf("expected FOLLOW type, got %v", out.Items[0].Type)
 	}
 
-	// Replay the same event id; dedupe should keep the count at one.
+	// Implicit author subscription must land so future strategy
+	// fan-out reaches the follower.
+	exists, err := subs.ExistsByObject(context.Background(), 99, "author", 42)
+	if err != nil || !exists {
+		t.Fatalf("expected author subscription to exist, got exists=%v err=%v", exists, err)
+	}
+
+	// Replay the same event id; dedupe should keep both the
+	// notification count and the subscription count at one.
 	if err := infraUserSync.Dispatch(context.Background(), handler, raw); err != nil {
 		t.Fatalf("replay: %v", err)
 	}
@@ -72,17 +85,46 @@ func TestUserSync_FollowedCreatesNotification(t *testing.T) {
 	}
 }
 
+// TestUserSync_UnfollowedDropsAuthorSubscription confirms a follow ->
+// unfollow round-trip cleans up the implicit author subscription so
+// the follower stops receiving strategy fan-out.
+func TestUserSync_UnfollowedDropsAuthorSubscription(t *testing.T) {
+	_, subs, handler := newUserSyncFixture()
+
+	follow := usersync.Envelope{
+		EventID:   "f-1",
+		EventType: usersync.EventUserFollowed,
+		Payload:   map[string]any{"follower_id": float64(7), "followee_id": float64(8)},
+	}
+	rawFollow, _ := json.Marshal(follow)
+	if err := infraUserSync.Dispatch(context.Background(), handler, rawFollow); err != nil {
+		t.Fatalf("follow dispatch: %v", err)
+	}
+
+	unfollow := usersync.Envelope{
+		EventID:   "u-1",
+		EventType: usersync.EventUserUnfollowed,
+		Payload:   map[string]any{"follower_id": float64(7), "followee_id": float64(8)},
+	}
+	rawUn, _ := json.Marshal(unfollow)
+	if err := infraUserSync.Dispatch(context.Background(), handler, rawUn); err != nil {
+		t.Fatalf("unfollow dispatch: %v", err)
+	}
+
+	exists, err := subs.ExistsByObject(context.Background(), 7, "author", 8)
+	if err != nil {
+		t.Fatalf("probe: %v", err)
+	}
+	if exists {
+		t.Fatalf("expected author subscription to be cleared after unfollow")
+	}
+}
+
 // TestUserSync_UnknownEventIsNoop confirms an unrelated envelope is
 // silently dropped so an upstream producer can grow new types without
 // breaking Notification.
 func TestUserSync_UnknownEventIsNoop(t *testing.T) {
-	svc := appNotif.NewService(appNotif.Dependencies{
-		Notifications: infraMemory.NewNotificationRepository(),
-		Preferences:   infraMemory.NewPreferenceRepository(),
-		Subscriptions: infraMemory.NewSubscriptionRepository(),
-		Clock:         func() time.Time { return time.Now() },
-	})
-	handler := appUserSync.NewHandler(svc)
+	_, _, handler := newUserSyncFixture()
 	raw := []byte(`{"event_type":"UserSomethingNew","payload":{}}`)
 	if err := infraUserSync.Dispatch(context.Background(), handler, raw); err != nil {
 		t.Fatalf("dispatch: %v", err)

@@ -23,7 +23,17 @@ const MaxPageLimit = 100
 
 // Service is the orchestration surface used by every adapter.
 type Service interface {
+	// CreateNotification persists a row unconditionally. System
+	// messages (account lockouts, billing reminders) bypass the
+	// recipient's in-app preference because the platform must reach
+	// them regardless of channel toggles.
 	CreateNotification(ctx context.Context, in CreateNotificationInput) (*domNotif.Notification, error)
+	// DeliverNotification is the preference-aware variant used by the
+	// fan-out path (follow / strategy / backtest). When the recipient
+	// has switched off in-app delivery the call returns
+	// (nil, ErrInAppDisabled) so the caller can log and move on
+	// without writing a row the user explicitly opted out of.
+	DeliverNotification(ctx context.Context, in CreateNotificationInput) (*domNotif.Notification, error)
 	ListNotifications(ctx context.Context, in ListNotificationsInput) (ListNotificationsOutput, error)
 	GetUnreadCount(ctx context.Context, userID int64) (int64, error)
 	MarkRead(ctx context.Context, userID, id int64) error
@@ -82,6 +92,41 @@ func encodeOffsetCursor(offset int) string {
 }
 
 func (s *service) CreateNotification(ctx context.Context, in CreateNotificationInput) (*domNotif.Notification, error) {
+	return s.create(ctx, in)
+}
+
+// DeliverNotification is the preference-aware variant. When the
+// recipient turned in-app off the call short-circuits with
+// ErrInAppDisabled so the fan-out path can log without persisting.
+func (s *service) DeliverNotification(ctx context.Context, in CreateNotificationInput) (*domNotif.Notification, error) {
+	if in.UserID <= 0 {
+		return nil, notifErr.ErrInvalidUserID
+	}
+	enabled, err := s.inAppEnabled(ctx, in.UserID)
+	if err != nil {
+		return nil, err
+	}
+	if !enabled {
+		return nil, notifErr.ErrInAppDisabled
+	}
+	return s.create(ctx, in)
+}
+
+// inAppEnabled reads the recipient's preference; a missing row falls
+// back to the platform defaults (in-app on).
+func (s *service) inAppEnabled(ctx context.Context, userID int64) (bool, error) {
+	pref, err := s.deps.Preferences.Get(ctx, userID)
+	if err != nil {
+		if errors.Is(err, notifErr.ErrPreferenceNotFound) {
+			defaults := domPref.Defaults(userID, s.now())
+			return defaults.InAppEnabled, nil
+		}
+		return false, err
+	}
+	return pref.InAppEnabled, nil
+}
+
+func (s *service) create(ctx context.Context, in CreateNotificationInput) (*domNotif.Notification, error) {
 	if in.UserID <= 0 {
 		return nil, notifErr.ErrInvalidUserID
 	}

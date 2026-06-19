@@ -13,11 +13,13 @@ package strategysync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 
 	appNotif "github.com/agoXQ/QuantLab/app/notification/application/notification"
+	notifErr "github.com/agoXQ/QuantLab/app/notification/domain/errors"
 	domsync "github.com/agoXQ/QuantLab/app/notification/domain/strategysync"
 	domSub "github.com/agoXQ/QuantLab/app/notification/domain/subscription"
 	"github.com/agoXQ/QuantLab/app/notification/domain/valueobject"
@@ -27,6 +29,12 @@ import (
 // application uses for strategy fan-out. Stored lowercase so the
 // repository's normalisation rule applies.
 const ObjectTypeStrategy = "strategy"
+
+// ObjectTypeAuthor is the implicit subscription written by the
+// User-followed handler so anyone following the author receives
+// strategy fan-out. Kept here too so the strategy handler does not
+// need to import the user-sync application package.
+const ObjectTypeAuthor = "author"
 
 // Handler implements domsync.Handler by delegating to the Notification
 // service's CreateNotification hook plus the subscription repo.
@@ -62,30 +70,71 @@ func (h *Handler) OnPublished(ctx context.Context, env domsync.Envelope, p domsy
 	if h.markSeen(env.EventID) {
 		return nil
 	}
-	subs, err := h.subs.ListSubscribers(ctx, ObjectTypeStrategy, p.StrategyID)
+	recipients, err := h.collectRecipients(ctx, p.StrategyID, p.AuthorID)
 	if err != nil {
-		return fmt.Errorf("strategysync: list subscribers strategy=%d: %w", p.StrategyID, err)
+		return err
 	}
-	if len(subs) == 0 {
+	if len(recipients) == 0 {
 		return nil
 	}
 	title := "策略已发布"
 	content := fmt.Sprintf("strategy %d published a new version", p.StrategyID)
-	for _, uid := range subs {
+	for _, uid := range recipients {
 		if uid == p.AuthorID || uid <= 0 {
 			continue
 		}
-		if _, err := h.svc.CreateNotification(ctx, appNotif.CreateNotificationInput{
+		if _, err := h.svc.DeliverNotification(ctx, appNotif.CreateNotificationInput{
 			UserID:  uid,
 			Type:    valueobject.NotificationTypeStrategy,
 			Title:   title,
 			Content: content,
 		}); err != nil {
+			if errors.Is(err, notifErr.ErrInAppDisabled) {
+				continue
+			}
 			log.Printf("[strategysync] published fan-out user=%d: %v", uid, err)
 		}
 	}
-	log.Printf("[strategysync] published strategy=%d fan-out=%d", p.StrategyID, len(subs))
+	log.Printf("[strategysync] published strategy=%d fan-out=%d", p.StrategyID, len(recipients))
 	return nil
+}
+
+// collectRecipients merges explicit ("strategy", id) subscribers with
+// the implicit ("author", author_id) followers and returns the
+// deduplicated set. The author is filtered downstream so a self-
+// follow does not echo back at publish time.
+func (h *Handler) collectRecipients(ctx context.Context, strategyID, authorID int64) ([]int64, error) {
+	stratSubs, err := h.subs.ListSubscribers(ctx, ObjectTypeStrategy, strategyID)
+	if err != nil {
+		return nil, fmt.Errorf("strategysync: list subscribers strategy=%d: %w", strategyID, err)
+	}
+	var authorSubs []int64
+	if authorID > 0 {
+		authorSubs, err = h.subs.ListSubscribers(ctx, ObjectTypeAuthor, authorID)
+		if err != nil {
+			return nil, fmt.Errorf("strategysync: list subscribers author=%d: %w", authorID, err)
+		}
+	}
+	if len(stratSubs) == 0 && len(authorSubs) == 0 {
+		return nil, nil
+	}
+	seen := make(map[int64]struct{}, len(stratSubs)+len(authorSubs))
+	out := make([]int64, 0, len(stratSubs)+len(authorSubs))
+	for _, uid := range stratSubs {
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		seen[uid] = struct{}{}
+		out = append(out, uid)
+	}
+	for _, uid := range authorSubs {
+		if _, ok := seen[uid]; ok {
+			continue
+		}
+		seen[uid] = struct{}{}
+		out = append(out, uid)
+	}
+	return out, nil
 }
 
 // OnForked notifies the author of the source strategy that someone
@@ -109,12 +158,15 @@ func (h *Handler) OnForked(ctx context.Context, env domsync.Envelope, p domsync.
 		if uid == p.CreatorID || uid <= 0 {
 			continue
 		}
-		if _, err := h.svc.CreateNotification(ctx, appNotif.CreateNotificationInput{
+		if _, err := h.svc.DeliverNotification(ctx, appNotif.CreateNotificationInput{
 			UserID:  uid,
 			Type:    valueobject.NotificationTypeStrategy,
 			Title:   title,
 			Content: content,
 		}); err != nil {
+			if errors.Is(err, notifErr.ErrInAppDisabled) {
+				continue
+			}
 			log.Printf("[strategysync] forked fan-out user=%d: %v", uid, err)
 		}
 	}

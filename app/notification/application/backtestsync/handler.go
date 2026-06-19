@@ -5,12 +5,14 @@ package backtestsync
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sync"
 
 	appNotif "github.com/agoXQ/QuantLab/app/notification/application/notification"
 	domsync "github.com/agoXQ/QuantLab/app/notification/domain/backtestsync"
+	notifErr "github.com/agoXQ/QuantLab/app/notification/domain/errors"
 	"github.com/agoXQ/QuantLab/app/notification/domain/valueobject"
 )
 
@@ -41,12 +43,16 @@ func (h *Handler) OnFinished(ctx context.Context, env domsync.Envelope, p domsyn
 		"job %d finished: total_return=%.2f%% sharpe=%.2f max_dd=%.2f%%",
 		p.JobID, p.TotalReturn*100, p.Sharpe, p.MaxDrawdown*100,
 	)
-	if _, err := h.svc.CreateNotification(ctx, appNotif.CreateNotificationInput{
+	if _, err := h.svc.DeliverNotification(ctx, appNotif.CreateNotificationInput{
 		UserID:  p.UserID,
 		Type:    valueobject.NotificationTypeBacktest,
 		Title:   title,
 		Content: content,
 	}); err != nil {
+		if errors.Is(err, notifErr.ErrInAppDisabled) {
+			log.Printf("[backtestsync] finished job=%d user=%d in-app disabled", p.JobID, p.UserID)
+			return nil
+		}
 		return fmt.Errorf("backtestsync: create finished notification user=%d: %w", p.UserID, err)
 	}
 	log.Printf("[backtestsync] finished job=%d user=%d", p.JobID, p.UserID)
@@ -64,12 +70,16 @@ func (h *Handler) OnFailed(ctx context.Context, env domsync.Envelope, p domsync.
 	}
 	title := "回测失败"
 	content := fmt.Sprintf("job %d failed: %s", p.JobID, p.Reason)
-	if _, err := h.svc.CreateNotification(ctx, appNotif.CreateNotificationInput{
+	if _, err := h.svc.DeliverNotification(ctx, appNotif.CreateNotificationInput{
 		UserID:  p.UserID,
 		Type:    valueobject.NotificationTypeBacktest,
 		Title:   title,
 		Content: content,
 	}); err != nil {
+		if errors.Is(err, notifErr.ErrInAppDisabled) {
+			log.Printf("[backtestsync] failed job=%d user=%d in-app disabled", p.JobID, p.UserID)
+			return nil
+		}
 		return fmt.Errorf("backtestsync: create failed notification user=%d: %w", p.UserID, err)
 	}
 	log.Printf("[backtestsync] failed job=%d user=%d", p.JobID, p.UserID)

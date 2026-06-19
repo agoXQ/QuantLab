@@ -3,6 +3,7 @@ package svc
 import (
 	"context"
 	"log"
+	"time"
 
 	appNotif "github.com/agoXQ/QuantLab/app/notification/application/notification"
 	appBacktestSync "github.com/agoXQ/QuantLab/app/notification/application/backtestsync"
@@ -26,7 +27,7 @@ type syncRunner struct {
 	closer interface{ Close() error }
 }
 
-func buildUserSync(c config.Config, svc appNotif.Service) *syncRunner {
+func buildUserSync(c config.Config, svc appNotif.Service, subs domSub.Repository) *syncRunner {
 	if !c.UserSync.Enabled {
 		return nil
 	}
@@ -34,7 +35,7 @@ func buildUserSync(c config.Config, svc appNotif.Service) *syncRunner {
 		log.Printf("[notification] user sync enabled but no Kafka brokers; skipping")
 		return nil
 	}
-	handler := appUserSync.NewHandler(svc)
+	handler := appUserSync.NewHandler(svc, subs, time.Now)
 	consumer, err := infraUserSync.NewConsumer(infraUserSync.Config{
 		Brokers: c.UserSync.Brokers,
 		Topic:   c.UserSync.Topic,
