@@ -24,7 +24,9 @@ func NewGetUserLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetUserLo
 }
 
 func (l *GetUserLogic) GetUser(in *pb.GetUserRequest) (*pb.GetUserResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetUserResponse{}, nil
+	u, err := l.svcCtx.UserSvc.Get(l.ctx, in.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetUserResponse{User: userToProto(u)}, nil
 }

@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appUser "github.com/agoXQ/QuantLab/app/user/application/user"
 	"github.com/agoXQ/QuantLab/app/user/internal/svc"
 	"github.com/agoXQ/QuantLab/app/user/pb"
 
@@ -23,8 +24,16 @@ func NewRegisterLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Register
 	}
 }
 
+// Register delegates to the application service so HTTP and gRPC share
+// the same business rules.
 func (l *RegisterLogic) Register(in *pb.RegisterRequest) (*pb.RegisterResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.RegisterResponse{}, nil
+	res, err := l.svcCtx.UserSvc.Register(l.ctx, appUser.RegisterRequest{
+		Username: in.Username,
+		Email:    in.Email,
+		Password: in.Password,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &pb.RegisterResponse{UserId: res.User.ID}, nil
 }

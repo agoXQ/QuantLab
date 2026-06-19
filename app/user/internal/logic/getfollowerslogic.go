@@ -24,7 +24,9 @@ func NewGetFollowersLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetF
 }
 
 func (l *GetFollowersLogic) GetFollowers(in *pb.GetFollowersRequest) (*pb.GetFollowersResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetFollowersResponse{}, nil
+	res, err := l.svcCtx.UserSvc.ListFollowers(l.ctx, in.UserId, int(in.Limit), 0)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetFollowersResponse{Followers: usersToProto(res.Users)}, nil
 }

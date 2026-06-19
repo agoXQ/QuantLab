@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	appUser "github.com/agoXQ/QuantLab/app/user/application/user"
 	"github.com/agoXQ/QuantLab/app/user/internal/svc"
 	"github.com/agoXQ/QuantLab/app/user/pb"
 
@@ -23,8 +24,14 @@ func NewFollowLogic(ctx context.Context, svcCtx *svc.ServiceContext) *FollowLogi
 	}
 }
 
+// Follow reads the follower id from gRPC metadata "x-user-id" until
+// the auth interceptor lands; the followee comes from the request.
 func (l *FollowLogic) Follow(in *pb.FollowRequest) (*pb.FollowResponse, error) {
-	// todo: add your logic here and delete this line
-
+	if err := l.svcCtx.UserSvc.Follow(l.ctx, appUser.FollowRequest{
+		FollowerID: userIDFromContext(l.ctx),
+		FolloweeID: in.FolloweeId,
+	}); err != nil {
+		return nil, err
+	}
 	return &pb.FollowResponse{}, nil
 }

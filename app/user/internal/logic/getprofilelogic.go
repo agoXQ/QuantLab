@@ -24,7 +24,15 @@ func NewGetProfileLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetPro
 }
 
 func (l *GetProfileLogic) GetProfile(in *pb.GetProfileRequest) (*pb.GetProfileResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetProfileResponse{}, nil
+	p, err := l.svcCtx.UserSvc.GetProfile(l.ctx, in.UserId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetProfileResponse{
+		User:           userToProto(p.User),
+		FollowerCount:  p.FollowerCount,
+		FollowingCount: p.FollowingCount,
+		StrategyCount:  p.StrategyCount,
+		BacktestCount:  p.BacktestCount,
+	}, nil
 }
