@@ -229,7 +229,14 @@ func (s *service) runJob(ctx context.Context, job *backtestjob.BacktestJob) (*Ru
 	if err != nil {
 		return nil, err
 	}
-	if len(bars) == 0 {
+	// LoadBars always returns a map entry per requested stock code (even
+	// when the underlying query found no rows), so checking the map size
+	// is not enough — we need to count actual bars across all stocks.
+	totalBars := 0
+	for _, bs := range bars {
+		totalBars += len(bs)
+	}
+	if totalBars == 0 {
 		return nil, bterr.ErrMarketDataMissing
 	}
 	if len(calendar) == 0 {

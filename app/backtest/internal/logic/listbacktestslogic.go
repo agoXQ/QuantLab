@@ -3,6 +3,7 @@ package logic
 import (
 	"context"
 
+	"github.com/agoXQ/QuantLab/app/backtest/application/backtest"
 	"github.com/agoXQ/QuantLab/app/backtest/internal/svc"
 	"github.com/agoXQ/QuantLab/app/backtest/pb"
 
@@ -23,8 +24,21 @@ func NewListBacktestsLogic(ctx context.Context, svcCtx *svc.ServiceContext) *Lis
 	}
 }
 
+// ListBacktests returns jobs filtered by user_id. The proto response
+// carries a repeated Jobs field; the cursor is passed through from the
+// application layer's list result.
 func (l *ListBacktestsLogic) ListBacktests(in *pb.ListBacktestsRequest) (*pb.ListBacktestsResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.ListBacktestsResponse{}, nil
+	limit := int(in.Limit)
+	jobs, err := l.svcCtx.BacktestSvc.List(l.ctx, backtest.ListJobsQuery{
+		UserID: in.UserId,
+		Limit:  limit,
+	})
+	if err != nil {
+		return nil, err
+	}
+	pbJobs := make([]*pb.BacktestJob, 0, len(jobs))
+	for _, job := range jobs {
+		pbJobs = append(pbJobs, jobToProto(job))
+	}
+	return &pb.ListBacktestsResponse{Jobs: pbJobs}, nil
 }

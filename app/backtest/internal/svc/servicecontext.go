@@ -31,6 +31,7 @@ import (
 	infraStrategy "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategy"
 	infraStrategySync "github.com/agoXQ/QuantLab/app/backtest/infrastructure/strategysync"
 	appStrategySync "github.com/agoXQ/QuantLab/app/backtest/application/strategysync"
+	domsync "github.com/agoXQ/QuantLab/app/backtest/domain/strategysync"
 	infraWorker "github.com/agoXQ/QuantLab/app/backtest/infrastructure/worker"
 
 	"github.com/zeromicro/go-zero/core/discov"
@@ -82,6 +83,10 @@ type ServiceContext struct {
 	strategySyncDone   chan struct{}
 	strategySyncCloser interface{ Close() error }
 	strategyClient     zrpc.Client
+	// StrategyResolver resolves strategy version → formula for the gRPC
+	// CreateBacktest logic layer. It is wired whenever Strategy endpoints
+	// are configured, regardless of whether StrategySync is enabled.
+	StrategyResolver domsync.Resolver
 }
 
 // NewServiceContext wires the dependency graph.
@@ -177,6 +182,16 @@ func NewServiceContext(c config.Config) *ServiceContext {
 
 	startStrategySync, syncCancel, syncDone, syncCloser, strategyClient := buildStrategySync(c, svc, marketProvider)
 
+	// Build a strategy resolver for the gRPC CreateBacktest logic even
+	// when StrategySync is disabled — the logic layer needs to resolve
+	// formula_text from a strategy version id.
+	var strategyResolver domsync.Resolver
+	if strategyClient != nil {
+		strategyResolver = infraStrategySync.NewGRPCResolver(strategyClient)
+	} else {
+		strategyResolver = buildStandaloneResolver(c)
+	}
+
 	sc := &ServiceContext{
 		Config:             c,
 		BacktestSvc:        svc,
@@ -191,6 +206,7 @@ func NewServiceContext(c config.Config) *ServiceContext {
 		strategySyncDone:   syncDone,
 		strategySyncCloser: syncCloser,
 		strategyClient:     strategyClient,
+		StrategyResolver: strategyResolver,
 	}
 	if startStrategySync != nil {
 		startStrategySync()
@@ -424,4 +440,26 @@ func buildStrategyClientConf(cfg config.StrategyClientConfig) (zrpc.RpcClientCon
 		return zrpc.RpcClientConf{}, fmt.Errorf("either Endpoints or Etcd.Hosts must be set")
 	}
 	return out, nil
+}
+
+
+// buildStandaloneResolver wires a gRPC strategy resolver when
+// StrategySync is disabled but Strategy endpoints are still configured.
+// This lets the gRPC CreateBacktest logic resolve formula_text without
+// the full strategy-sync consumer pipeline.
+func buildStandaloneResolver(c config.Config) domsync.Resolver {
+	if len(c.StrategySync.Strategy.Endpoints) == 0 {
+		return nil
+	}
+	clientConf, err := buildStrategyClientConf(c.StrategySync.Strategy)
+	if err != nil {
+		log.Printf("[backtest] standalone resolver: invalid strategy client config: %v", err)
+		return nil
+	}
+	cli, err := zrpc.NewClient(clientConf)
+	if err != nil {
+		log.Printf("[backtest] standalone resolver: dial strategy service: %v", err)
+		return nil
+	}
+	return infraStrategySync.NewGRPCResolver(cli)
 }

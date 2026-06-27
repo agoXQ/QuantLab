@@ -58,9 +58,10 @@ func main() {
 		router.Use(gin.Recovery())
 
 		apiGroup := router.Group("/api/v1/formula")
-		handler := httpHandler.NewHandlerWithEvaluator(
+		handler := httpHandler.NewHandlerWithScreen(
 			ctx.FormulaService,
 			ctx.EvaluatorService,
+			ctx.ScreenService,
 			ctx.DataPort,
 		)
 		handler.RegisterRoutes(apiGroup)

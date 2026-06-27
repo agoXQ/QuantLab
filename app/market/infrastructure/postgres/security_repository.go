@@ -66,6 +66,14 @@ func (r *SecurityRepository) List(ctx context.Context, q security.ListQuery) ([]
 		args = append(args, string(q.AssetType))
 		conditions = append(conditions, fmt.Sprintf("asset_type = $%d", len(args)))
 	}
+	if q.Industry != "" {
+		args = append(args, q.Industry)
+		conditions = append(conditions, fmt.Sprintf("industry = $%d", len(args)))
+	}
+	if q.Status != "" {
+		args = append(args, string(q.Status))
+		conditions = append(conditions, fmt.Sprintf("status = $%d", len(args)))
+	}
 	args = append(args, limit+1)
 
 	query := fmt.Sprintf(`
@@ -154,15 +162,15 @@ type rowScanner interface {
 
 func scanSecurity(row rowScanner) (*security.Security, error) {
 	var (
-		s            security.Security
-		market       sql.NullString
-		exchange     sql.NullString
-		assetType    sql.NullString
-		industry     sql.NullString
-		status       sql.NullString
-		listing      sql.NullTime
-		delisting    sql.NullTime
-		stockName    sql.NullString
+		s         security.Security
+		market    sql.NullString
+		exchange  sql.NullString
+		assetType sql.NullString
+		industry  sql.NullString
+		status    sql.NullString
+		listing   sql.NullTime
+		delisting sql.NullTime
+		stockName sql.NullString
 	)
 	if err := row.Scan(
 		&s.ID, &s.StockCode, &stockName, &market, &exchange, &assetType,

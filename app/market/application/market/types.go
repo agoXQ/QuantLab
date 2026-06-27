@@ -17,6 +17,8 @@ type ListSecuritiesQuery struct {
 	Market    valueobject.Market
 	Exchange  string
 	AssetType valueobject.AssetType
+	Industry  string
+	Status    valueobject.SecurityStatus
 	Cursor    string
 	Limit     int
 }

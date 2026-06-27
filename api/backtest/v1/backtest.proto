@@ -28,6 +28,10 @@ message BacktestJob {
   double initial_capital = 9;
   int64 created_at = 10;
   int64 finished_at = 11;
+  string name = 12;
+  string formula = 13;
+  double progress = 14;
+  string error_message = 15;
 }
 
 message BacktestConfig {

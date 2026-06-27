@@ -262,6 +262,67 @@ DELETE
 
 ---
 
+# Formula Screen API
+
+## POST /api/v1/formulas/screen
+
+服务端公式选股接口。
+
+请求：
+
+```JSON
+{
+  "formula": "ROE > 15 AND PE < 20",
+  "as_of_date": "2026-06-27",
+  "universe_filter": {
+    "market": "CN",
+    "exchange": "SSE",
+    "industry": "银行",
+    "asset_type": "STOCK",
+    "status": "LISTED",
+    "stock_codes": []
+  },
+  "limit": 500
+}
+```
+
+字段说明：
+
+- `formula` 必填，DSL 选股公式。
+- `as_of_date` 可选，默认服务端当前日期。
+- `universe_filter.exchange` 可选，不传则不过滤交易所。
+- `universe_filter.industry` 可选，不传则不过滤行业。
+- `universe_filter.asset_type` 可选，不传默认为 `STOCK`。
+- `universe_filter.status` 可选，不传默认为 `LISTED`。
+- `universe_filter.stock_codes` 可选，传入时作为手工股票池。
+- `limit` 可选，默认 500，表示最多返回结果条数，服务端限制最大值；它不截断参与计算的候选股票池。
+- `data_version` 不由前端传入，后端默认使用最新 Market Data 版本。
+
+错误响应会返回可直接展示给前端用户的 `error` 文本，例如股票池为空、最新数据版本不存在、Market Data 查询失败或公式执行失败。
+
+响应：
+
+```JSON
+{
+  "formula_hash": "sha256...",
+  "plan_type": "FILTER",
+  "data_version": "2026.06.27",
+  "universe_size": 500,
+  "items": [
+    {
+      "stock_code": "600519",
+      "stock_name": "贵州茅台",
+      "exchange": "SSE",
+      "industry": "白酒",
+      "score": null,
+      "selected": true
+    }
+  ]
+}
+```
+
+---
+
 # Request ID规范
 
 Header：
@@ -1003,4 +1064,3 @@ AI Service TD
 ```
 
 所有未来新增接口必须遵循本规范。
-

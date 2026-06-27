@@ -67,3 +67,18 @@ func (s *UserServiceServer) GetFollowing(ctx context.Context, in *pb.GetFollowin
 	l := logic.NewGetFollowingLogic(ctx, s.svcCtx)
 	return l.GetFollowing(in)
 }
+
+func (s *UserServiceServer) RefreshToken(ctx context.Context, in *pb.RefreshTokenRequest) (*pb.RefreshTokenResponse, error) {
+	l := logic.NewRefreshTokenLogic(ctx, s.svcCtx)
+	return l.RefreshToken(in)
+}
+
+func (s *UserServiceServer) ChangePassword(ctx context.Context, in *pb.ChangePasswordRequest) (*pb.ChangePasswordResponse, error) {
+	l := logic.NewChangePasswordLogic(ctx, s.svcCtx)
+	return l.ChangePassword(in)
+}
+
+func (s *UserServiceServer) UpdateAccount(ctx context.Context, in *pb.UpdateAccountRequest) (*pb.UpdateAccountResponse, error) {
+	l := logic.NewUpdateAccountLogic(ctx, s.svcCtx)
+	return l.UpdateAccount(in)
+}

@@ -31,9 +31,10 @@ AST生成
 ```Plain Text
 策略管理
 回测执行
-市场数据读取
 排行榜计算
 ```
+
+说明：Formula 编译核心不拥有市场数据；Formula Service 的应用用例可以通过 DataPort 读取 Market Data，用于 Evaluate / Screen 等执行类场景。
 
 ---
 
@@ -68,6 +69,80 @@ AI Service
 ```
 
 统一使用。
+
+---
+
+# Screen 用例设计
+
+Screen 是 Formula Service 的应用层用例，用于服务端公式选股。
+
+它负责：
+
+```Plain Text
+接收公式和股票池过滤条件
+归一化股票池过滤条件：空 exchange 表示全部交易所，空 industry 表示全部行业；asset_type/status 默认为 STOCK/LISTED
+解析最新 data_version
+通过 Market DataPort 查询股票池
+调用现有 Compile + Evaluator pipeline
+返回带证券元信息的结果
+```
+
+它不负责：
+
+```Plain Text
+持久化选股任务快照
+策略创建
+回测调度
+```
+
+## 请求模型
+
+```Plain Text
+ScreenRequest
+- formula: string
+- as_of_date: string
+- universe_filter:
+  - market: string optional
+  - exchange: string optional
+  - industry: string optional
+  - asset_type: string default STOCK
+  - status: string default LISTED
+  - stock_codes: []string optional
+- limit: int default 500, result size limit
+```
+
+说明：交易所和行业是用户可选过滤条件，空值不参与过滤；数据版本不暴露给用户，由服务端解析最新版本。默认股票池语义固定为上市股票，避免把 ETF、指数或退市标的混入公式选股。`limit` 只限制返回结果条数，不限制参与计算的候选股票池；服务端分页读取候选股票池，并通过 `maxScreenUniverseSize` 设置保护性上限。
+
+## 执行流程
+
+```Plain Text
+ScreenRequest
+↓
+NormalizeUniverseFilter(default STOCK/LISTED)
+↓
+ResolveDataVersion(latest when omitted)
+↓
+LoadUniverse(filter)
+↓
+Evaluate(formula, universe, as_of_date, data_version)
+↓
+Join security metadata
+↓
+ApplyResultLimit(limit)
+↓
+ScreenResponse
+```
+
+## DataPort 扩展
+
+Screen 需要的 DataPort 能力：
+
+```Plain Text
+ListSecurities(filter) -> []Security
+LatestDataVersion() -> string
+```
+
+RepositoryDataPort 在 monolith 阶段直接读取 Market Data 数据库；未来服务拆分后替换为 Market Data gRPC adapter。
 
 ---
 
@@ -1011,4 +1086,3 @@ DSL → AST → IR → Execution Plan → Backtest Engine
 IR 层的引入使 Formula Engine 可兼容通达信公式、同花顺公式等外部 DSL，统一编译到同一执行计划。
 
 V3 支持 JIT 编译与 WASM 执行，进一步提升回测性能。
-

@@ -35,6 +35,10 @@ type BacktestJob struct {
 	InitialCapital float64                `protobuf:"fixed64,9,opt,name=initial_capital,json=initialCapital,proto3" json:"initial_capital,omitempty"`
 	CreatedAt      int64                  `protobuf:"varint,10,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	FinishedAt     int64                  `protobuf:"varint,11,opt,name=finished_at,json=finishedAt,proto3" json:"finished_at,omitempty"`
+	Name           string                 `protobuf:"bytes,12,opt,name=name,proto3" json:"name,omitempty"`
+	Formula        string                 `protobuf:"bytes,13,opt,name=formula,proto3" json:"formula,omitempty"`
+	Progress       float64                `protobuf:"fixed64,14,opt,name=progress,proto3" json:"progress,omitempty"`
+	ErrorMessage   string                 `protobuf:"bytes,15,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -144,6 +148,34 @@ func (x *BacktestJob) GetFinishedAt() int64 {
 		return x.FinishedAt
 	}
 	return 0
+}
+
+func (x *BacktestJob) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *BacktestJob) GetFormula() string {
+	if x != nil {
+		return x.Formula
+	}
+	return ""
+}
+
+func (x *BacktestJob) GetProgress() float64 {
+	if x != nil {
+		return x.Progress
+	}
+	return 0
+}
+
+func (x *BacktestJob) GetErrorMessage() string {
+	if x != nil {
+		return x.ErrorMessage
+	}
+	return ""
 }
 
 type BacktestConfig struct {
@@ -1230,7 +1262,7 @@ var File_api_backtest_v1_backtest_proto protoreflect.FileDescriptor
 
 const file_api_backtest_v1_backtest_proto_rawDesc = "" +
 	"\n" +
-	"\x1eapi/backtest/v1/backtest.proto\x12\bbacktest\x1a\x1aapi/common/v1/common.proto\"\xcf\x02\n" +
+	"\x1eapi/backtest/v1/backtest.proto\x12\bbacktest\x1a\x1aapi/common/v1/common.proto\"\xbe\x03\n" +
 	"\vBacktestJob\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\x03R\x02id\x12\x1f\n" +
 	"\vstrategy_id\x18\x02 \x01(\x03R\n" +
@@ -1248,7 +1280,11 @@ const file_api_backtest_v1_backtest_proto_rawDesc = "" +
 	"created_at\x18\n" +
 	" \x01(\x03R\tcreatedAt\x12\x1f\n" +
 	"\vfinished_at\x18\v \x01(\x03R\n" +
-	"finishedAt\"\xe9\x01\n" +
+	"finishedAt\x12\x12\n" +
+	"\x04name\x18\f \x01(\tR\x04name\x12\x18\n" +
+	"\aformula\x18\r \x01(\tR\aformula\x12\x1a\n" +
+	"\bprogress\x18\x0e \x01(\x01R\bprogress\x12#\n" +
+	"\rerror_message\x18\x0f \x01(\tR\ferrorMessage\"\xe9\x01\n" +
 	"\x0eBacktestConfig\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\x03R\x05jobId\x12'\n" +
 	"\x0fcommission_rate\x18\x02 \x01(\x01R\x0ecommissionRate\x12#\n" +

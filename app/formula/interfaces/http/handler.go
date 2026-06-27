@@ -20,6 +20,7 @@ import (
 type Handler struct {
 	svc       formula.Service
 	evaluator formula.EvaluatorService
+	screener  formula.ScreenService
 	dataPort  domainEval.DataPort
 }
 
@@ -40,6 +41,15 @@ func NewHandlerWithEvaluator(
 	return &Handler{svc: svc, evaluator: evaluator, dataPort: dataPort}
 }
 
+func NewHandlerWithScreen(
+	svc formula.Service,
+	evaluator formula.EvaluatorService,
+	screener formula.ScreenService,
+	dataPort domainEval.DataPort,
+) *Handler {
+	return &Handler{svc: svc, evaluator: evaluator, screener: screener, dataPort: dataPort}
+}
+
 // RegisterRoutes registers all formula API routes on the given gin engine.
 func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	rg.POST("/validate", h.Validate)
@@ -50,6 +60,7 @@ func (h *Handler) RegisterRoutes(rg *gin.RouterGroup) {
 	if h.evaluator != nil && h.dataPort != nil {
 		rg.POST("/evaluate", h.Evaluate)
 	}
+	rg.POST("/screen", h.Screen)
 }
 
 // --- Request / Response types ---
@@ -105,6 +116,24 @@ type evaluateRequest struct {
 	DataVersion  string   `json:"data_version"`
 }
 
+type universeFilterRequest struct {
+	Market     string   `json:"market"`
+	Exchange   string   `json:"exchange"`
+	Industry   string   `json:"industry"`
+	AssetType  string   `json:"asset_type"`
+	Status     string   `json:"status"`
+	StockCodes []string `json:"stock_codes"`
+}
+
+type screenRequest struct {
+	Formula        string                `json:"formula" binding:"required"`
+	AsOfDate       string                `json:"as_of_date"`
+	LookbackBars   int                   `json:"lookback_bars"`
+	DataVersion    string                `json:"data_version"`
+	Limit          int                   `json:"limit"`
+	UniverseFilter universeFilterRequest `json:"universe_filter"`
+}
+
 type rankingItem struct {
 	StockCode string  `json:"stock_code"`
 	Score     float64 `json:"score"`
@@ -121,6 +150,23 @@ type evaluateResponse struct {
 	Selection   []string      `json:"selection,omitempty"`
 	Ranking     []rankingItem `json:"ranking,omitempty"`
 	Values      []valueItem   `json:"values,omitempty"`
+}
+
+type screenItemResponse struct {
+	StockCode string   `json:"stock_code"`
+	StockName string   `json:"stock_name"`
+	Exchange  string   `json:"exchange"`
+	Industry  string   `json:"industry"`
+	Score     *float64 `json:"score,omitempty"`
+	Selected  bool     `json:"selected"`
+}
+
+type screenResponse struct {
+	FormulaHash  string               `json:"formula_hash"`
+	PlanType     string               `json:"plan_type"`
+	DataVersion  string               `json:"data_version"`
+	UniverseSize int                  `json:"universe_size"`
+	Items        []screenItemResponse `json:"items"`
 }
 
 // --- Handlers ---
@@ -303,6 +349,47 @@ func (h *Handler) Evaluate(c *gin.Context) {
 	c.JSON(http.StatusOK, buildEvaluateResponse(result))
 }
 
+func (h *Handler) Screen(c *gin.Context) {
+	if h.screener == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "screener not configured"})
+		return
+	}
+	var req screenRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+		return
+	}
+	asOf := time.Now()
+	if req.AsOfDate != "" {
+		parsed, err := parseAsOfDate(req.AsOfDate)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid as_of_date: " + err.Error()})
+			return
+		}
+		asOf = parsed
+	}
+	res, err := h.screener.Screen(c.Request.Context(), formula.ScreenRequest{
+		Formula:      req.Formula,
+		AsOfDate:     asOf,
+		LookbackBars: req.LookbackBars,
+		DataVersion:  req.DataVersion,
+		Limit:        req.Limit,
+		UniverseFilter: formula.UniverseFilter{
+			Market:     req.UniverseFilter.Market,
+			Exchange:   req.UniverseFilter.Exchange,
+			Industry:   req.UniverseFilter.Industry,
+			AssetType:  req.UniverseFilter.AssetType,
+			Status:     req.UniverseFilter.Status,
+			StockCodes: req.UniverseFilter.StockCodes,
+		},
+	})
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, buildScreenResponse(res))
+}
+
 // parseAsOfDate accepts the two shapes the rest of the platform uses: a
 // date-only "2006-01-02" string for cross-section requests, and full
 // RFC3339 for replay / audit traffic. Anything else surfaces as a 400 to
@@ -343,4 +430,28 @@ func buildEvaluateResponse(res *formula.EvaluateResult) evaluateResponse {
 		}
 	}
 	return resp
+}
+
+func buildScreenResponse(res *formula.ScreenResult) screenResponse {
+	if res == nil {
+		return screenResponse{}
+	}
+	items := make([]screenItemResponse, 0, len(res.Items))
+	for _, item := range res.Items {
+		items = append(items, screenItemResponse{
+			StockCode: item.StockCode,
+			StockName: item.StockName,
+			Exchange:  item.Exchange,
+			Industry:  item.Industry,
+			Score:     item.Score,
+			Selected:  item.Selected,
+		})
+	}
+	return screenResponse{
+		FormulaHash:  res.FormulaHash,
+		PlanType:     res.PlanType,
+		DataVersion:  res.DataVersion,
+		UniverseSize: res.UniverseSize,
+		Items:        items,
+	}
 }

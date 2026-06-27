@@ -10,9 +10,11 @@ import (
 	"github.com/agoXQ/QuantLab/app/formula/domain/series"
 
 	domainAdj "github.com/agoXQ/QuantLab/app/market/domain/adjustment"
+	"github.com/agoXQ/QuantLab/app/market/domain/dataversion"
 	"github.com/agoXQ/QuantLab/app/market/domain/factor"
 	"github.com/agoXQ/QuantLab/app/market/domain/financial"
 	"github.com/agoXQ/QuantLab/app/market/domain/marketbar"
+	"github.com/agoXQ/QuantLab/app/market/domain/security"
 	"github.com/agoXQ/QuantLab/app/market/domain/valueobject"
 )
 
@@ -25,8 +27,10 @@ import (
 // touching the evaluator or the application layer.
 type RepositoryDataPort struct {
 	bars       marketbar.Repository
+	securities security.Repository
 	financials financial.Repository
 	factors    factor.Repository
+	versions   dataversion.Repository
 	adjuster   domainAdj.Adjuster
 
 	// Adjustment defaults to AdjustmentPre to match the Market Data service
@@ -45,8 +49,10 @@ type RepositoryDataPort struct {
 // for backtests that explicitly want unadjusted prices).
 type RepositoryConfig struct {
 	Bars       marketbar.Repository
+	Securities security.Repository
 	Financials financial.Repository
 	Factors    factor.Repository
+	Versions   dataversion.Repository
 	Adjuster   domainAdj.Adjuster
 
 	Adjustment      valueobject.Adjustment
@@ -75,8 +81,10 @@ func NewRepository(c RepositoryConfig) (*RepositoryDataPort, error) {
 	}
 	return &RepositoryDataPort{
 		bars:            c.Bars,
+		securities:      c.Securities,
 		financials:      c.Financials,
 		factors:         c.Factors,
+		versions:        c.Versions,
 		adjuster:        c.Adjuster,
 		adjustment:      adjustment,
 		lookbackPadding: padding,
@@ -207,3 +215,43 @@ func (p *RepositoryDataPort) barsRange(req domainEval.BarsRequest) valueobject.D
 // loadConcurrency caps the number of parallel repository requests we issue.
 // The default value matches the MaxOpenConns budget for a single service.
 const loadConcurrency = 8
+
+func (p *RepositoryDataPort) ListSecurities(ctx context.Context, q security.ListQuery) ([]*security.Security, string, error) {
+	if p.securities == nil {
+		return nil, "", fmt.Errorf("repository data port: securities repository is not configured")
+	}
+	limit := q.Limit
+	if limit <= 0 {
+		limit = 500
+	}
+	if limit > 2000 {
+		limit = 2000
+	}
+	q.Limit = limit
+	items, next, err := p.securities.List(ctx, q)
+	if err != nil {
+		return nil, "", err
+	}
+	return items, next, nil
+}
+
+func (p *RepositoryDataPort) GetSecurity(ctx context.Context, stockCode string) (*security.Security, error) {
+	if p.securities == nil {
+		return nil, fmt.Errorf("repository data port: securities repository is not configured")
+	}
+	return p.securities.GetByCode(ctx, stockCode)
+}
+
+func (p *RepositoryDataPort) LatestDataVersion(ctx context.Context) (string, error) {
+	if p.versions == nil {
+		return "", nil
+	}
+	latest, err := p.versions.Latest(ctx)
+	if err != nil {
+		return "", err
+	}
+	if latest == nil {
+		return "", nil
+	}
+	return latest.Version, nil
+}

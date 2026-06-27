@@ -50,8 +50,14 @@ func (r *MarketBarRepository) Range(ctx context.Context, q marketbar.RangeQuery)
 		conditions = append(conditions, fmt.Sprintf("data_version = $%d", len(args)))
 	}
 	args = append(args, limit)
+	orderDirection := "ASC"
+	wrapAscending := false
+	if q.Range.Start.IsZero() && !q.Range.End.IsZero() {
+		orderDirection = "DESC"
+		wrapAscending = true
+	}
 
-	query := fmt.Sprintf(`
+	baseQuery := fmt.Sprintf(`
 		SELECT stock_code, trade_date, period,
 		       COALESCE(open_price, 0), COALESCE(high_price, 0),
 		       COALESCE(low_price, 0), COALESCE(close_price, 0),
@@ -59,8 +65,12 @@ func (r *MarketBarRepository) Range(ctx context.Context, q marketbar.RangeQuery)
 		       COALESCE(adj_factor, 1), COALESCE(data_version, '')
 		FROM market_bar
 		WHERE %s
-		ORDER BY trade_date ASC
-		LIMIT $%d`, strings.Join(conditions, " AND "), len(args))
+		ORDER BY trade_date %s
+		LIMIT $%d`, strings.Join(conditions, " AND "), orderDirection, len(args))
+	query := baseQuery
+	if wrapAscending {
+		query = fmt.Sprintf("SELECT * FROM (%s) recent_bars ORDER BY trade_date ASC", baseQuery)
+	}
 
 	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {

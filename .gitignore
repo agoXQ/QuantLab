@@ -43,3 +43,6 @@ temp/
 
 # http test
 .http
+# Dev script runtime (PIDs/logs)
+.run/
+logs/

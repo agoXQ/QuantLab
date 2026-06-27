@@ -1,5 +1,5 @@
 Name: formula.rpc
-ListenOn: 0.0.0.0:8080
+ListenOn: 0.0.0.0:8098
 HttpPort: 8081
 Etcd:
   Hosts:
@@ -14,13 +14,13 @@ RedisCache:
   TTL: 86400
 
 Postgres:
-  DSN: "postgres://quantlab:quantlab@localhost:5432/quantlab_formula?sslmode=disable"
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_formula?sslmode=disable"
 
 # MarketData wires the RepositoryDataPort directly against the Market Data
 # database. Leave DSN empty in environments where the formula service should
 # fall back to the in-memory data port (CI smoke tests, local exploration).
 MarketData:
-  DSN: "postgres://quantlab:quantlab@localhost:5432/quantlab_market_data?sslmode=disable"
+  DSN: "postgres://quantlab:quantlab_dev@localhost:5432/quantlab_market_data?sslmode=disable"
   Adjustment: pre
   MaxOpenConns: 10
   MaxIdleConns: 2

@@ -54,6 +54,14 @@ func TestDateRangeValidate(t *testing.T) {
 	if err := r.Validate(); err != nil {
 		t.Fatalf("zero range should be valid: %v", err)
 	}
+	startOnly, _ := valueobject.ParseDate("2026-01-01")
+	if err := (valueobject.DateRange{Start: startOnly}).Validate(); err != nil {
+		t.Fatalf("start-only range should be valid: %v", err)
+	}
+	endOnly, _ := valueobject.ParseDate("2026-01-31")
+	if err := (valueobject.DateRange{End: endOnly}).Validate(); err != nil {
+		t.Fatalf("end-only range should be valid: %v", err)
+	}
 	start, _ := valueobject.ParseDate("2026-01-01")
 	end, _ := valueobject.ParseDate("2025-12-31")
 	bad := valueobject.DateRange{Start: start, End: end}

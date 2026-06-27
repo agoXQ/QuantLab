@@ -16,6 +16,9 @@ service UserService {
   rpc Unfollow(UnfollowRequest) returns (UnfollowResponse);
   rpc GetFollowers(GetFollowersRequest) returns (GetFollowersResponse);
   rpc GetFollowing(GetFollowingRequest) returns (GetFollowingResponse);
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
+  rpc ChangePassword(ChangePasswordRequest) returns (ChangePasswordResponse);
+  rpc UpdateAccount(UpdateAccountRequest) returns (UpdateAccountResponse);
 }
 
 message RegisterRequest {
@@ -113,4 +116,34 @@ message GetFollowingRequest {
 message GetFollowingResponse {
   repeated User following = 1;
   common.Cursor cursor = 2;
+}
+
+message RefreshTokenRequest {
+  string refresh_token = 1;
+}
+
+message RefreshTokenResponse {
+  int64 user_id = 1;
+  string access_token = 2;
+  string refresh_token = 3;
+  int64 expires_in = 4;
+}
+
+message ChangePasswordRequest {
+  string current_password = 1;
+  string new_password = 2;
+}
+
+message ChangePasswordResponse {}
+
+message UpdateAccountRequest {
+  int64 user_id = 1;
+  int32 status = 2;
+  int32 creator_status = 3;
+  int32 verified_status = 4;
+  string membership_tier = 5;
+}
+
+message UpdateAccountResponse {
+  User user = 1;
 }

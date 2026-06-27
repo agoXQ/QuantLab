@@ -90,6 +90,8 @@ func (s *service) ListSecurities(ctx context.Context, q ListSecuritiesQuery) (*S
 		Market:    q.Market,
 		Exchange:  q.Exchange,
 		AssetType: q.AssetType,
+		Industry:  q.Industry,
+		Status:    q.Status,
 		Cursor:    q.Cursor,
 		Limit:     limit,
 	})

@@ -11,15 +11,15 @@ import (
 
 // Security is the aggregate root describing a tradable instrument.
 type Security struct {
-	ID            int64                    `json:"id"`
-	StockCode     string                   `json:"stock_code"`
-	StockName     string                   `json:"stock_name"`
-	Market        valueobject.Market       `json:"market"`
-	Exchange      string                   `json:"exchange"`
-	AssetType     valueobject.AssetType    `json:"asset_type"`
-	Industry      string                   `json:"industry"`
-	ListingDate   time.Time                `json:"listing_date"`
-	DelistingDate time.Time                `json:"delisting_date,omitempty"`
+	ID            int64                      `json:"id"`
+	StockCode     string                     `json:"stock_code"`
+	StockName     string                     `json:"stock_name"`
+	Market        valueobject.Market         `json:"market"`
+	Exchange      string                     `json:"exchange"`
+	AssetType     valueobject.AssetType      `json:"asset_type"`
+	Industry      string                     `json:"industry"`
+	ListingDate   time.Time                  `json:"listing_date"`
+	DelistingDate time.Time                  `json:"delisting_date,omitempty"`
 	Status        valueobject.SecurityStatus `json:"status"`
 }
 
@@ -61,6 +61,8 @@ type ListQuery struct {
 	Market    valueobject.Market
 	Exchange  string
 	AssetType valueobject.AssetType
+	Industry  string
+	Status    valueobject.SecurityStatus
 	Cursor    string
 	Limit     int
 }

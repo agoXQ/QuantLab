@@ -152,10 +152,7 @@ func (r DateRange) Validate() error {
 	if r.IsZero() {
 		return nil
 	}
-	if r.Start.IsZero() || r.End.IsZero() {
-		return fmt.Errorf("date range start and end must both be set")
-	}
-	if r.End.Before(r.Start) {
+	if !r.Start.IsZero() && !r.End.IsZero() && r.End.Before(r.Start) {
 		return fmt.Errorf("date range end %s is before start %s",
 			r.End.Format("2006-01-02"), r.Start.Format("2006-01-02"))
 	}

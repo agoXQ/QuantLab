@@ -1,0 +1,68 @@
+# QuantLab API Gateway configuration.
+# The gateway is the single REST entry point for the frontend; it dials
+# each backend service over gRPC and resolves auth once via the shared
+# JWT key set (must match User Service Token.Keys).
+
+Name: gateway
+HttpPort: 8000
+
+# Token mirrors app/user/etc/user.yaml Token block so the gateway
+# verifies access tokens signed by the User Service.
+Token:
+  ActiveKeyID: "k1"
+  Keys:
+    - ID: "k1"
+      Secret: "quantlab-user-dev-secret-change-me-now-32"
+  Issuer: quantlab.user
+
+# Per-service gRPC endpoints. Each service runs its own gRPC server
+# (ListenOn in the service's etc/*.yaml). Update the ports to match
+# your local / deployed setup; an empty Endpoints list leaves that
+# client nil and the gateway still boots.
+User:
+  Endpoints:
+    - 127.0.0.1:8086
+  Timeout: 2000
+Strategy:
+  Endpoints:
+    - 127.0.0.1:8084
+  Timeout: 2000
+Formula:
+  Endpoints:
+    - 127.0.0.1:8098
+  Timeout: 2000
+Backtest:
+  Endpoints:
+    - 127.0.0.1:8092
+  Timeout: 10000
+Market:
+  Endpoints:
+    - 127.0.0.1:8082
+  Timeout: 5000
+Ranking:
+  Endpoints:
+    - 127.0.0.1:8102
+  Timeout: 2000
+Portfolio:
+  Endpoints:
+    - 127.0.0.1:8100
+  Timeout: 2000
+Community:
+  Endpoints:
+    - 127.0.0.1:8096
+  Timeout: 2000
+AI:
+  Endpoints:
+    - 127.0.0.1:8090
+  Timeout: 30000
+Billing:
+  Endpoints:
+    - 127.0.0.1:8094
+  Timeout: 2000
+Notification:
+  Endpoints:
+    - 127.0.0.1:8088
+  Timeout: 2000
+
+# Formula service's own HTTP port (Evaluate lives here, not on gRPC).
+FormulaHTTP: "http://127.0.0.1:8081"

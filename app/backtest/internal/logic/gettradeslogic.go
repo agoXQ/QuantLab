@@ -23,8 +23,29 @@ func NewGetTradesLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetTrad
 	}
 }
 
+// GetTrades returns the trade list for a job.
 func (l *GetTradesLogic) GetTrades(in *pb.GetTradesRequest) (*pb.GetTradesResponse, error) {
-	// todo: add your logic here and delete this line
+	trades, err := l.svcCtx.BacktestSvc.GetTrades(l.ctx, in.JobId)
+	if err != nil {
+		return nil, err
+	}
 
-	return &pb.GetTradesResponse{}, nil
+	pbTrades := make([]*pb.Trade, 0, len(trades))
+	for _, t := range trades {
+		var tradeTime int64
+		if !t.TradeTime.IsZero() {
+			tradeTime = t.TradeTime.Unix()
+		}
+		pbTrades = append(pbTrades, &pb.Trade{
+			Id:         t.ID,
+			OrderId:    t.OrderID,
+			StockCode:  t.StockCode,
+			Quantity:   t.Quantity,
+			Price:      t.Price,
+			Commission: t.Commission,
+			TradeTime:  tradeTime,
+		})
+	}
+
+	return &pb.GetTradesResponse{Trades: pbTrades}, nil
 }

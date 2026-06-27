@@ -12,15 +12,12 @@ import (
 	"github.com/agoXQ/QuantLab/app/formula/application/formula"
 	domainEval "github.com/agoXQ/QuantLab/app/formula/domain/evaluator"
 	infraCache "github.com/agoXQ/QuantLab/app/formula/infrastructure/cache"
-	infraDataport "github.com/agoXQ/QuantLab/app/formula/infrastructure/dataport"
-	infraMarketAdj "github.com/agoXQ/QuantLab/app/market/infrastructure/adjustment"
-	infraMarketPg "github.com/agoXQ/QuantLab/app/market/infrastructure/postgres"
-	"github.com/agoXQ/QuantLab/app/market/domain/valueobject"
-	infraEvaluator "github.com/agoXQ/QuantLab/app/formula/infrastructure/evaluator"
-	infraIndicators "github.com/agoXQ/QuantLab/app/formula/infrastructure/indicators"
 	infraLog "github.com/agoXQ/QuantLab/app/formula/infrastructure/compilelog"
+	infraDataport "github.com/agoXQ/QuantLab/app/formula/infrastructure/dataport"
+	infraEvaluator "github.com/agoXQ/QuantLab/app/formula/infrastructure/evaluator"
 	infraEvent "github.com/agoXQ/QuantLab/app/formula/infrastructure/event"
 	"github.com/agoXQ/QuantLab/app/formula/infrastructure/function"
+	infraIndicators "github.com/agoXQ/QuantLab/app/formula/infrastructure/indicators"
 	"github.com/agoXQ/QuantLab/app/formula/infrastructure/lexer"
 	infraMetrics "github.com/agoXQ/QuantLab/app/formula/infrastructure/metrics"
 	"github.com/agoXQ/QuantLab/app/formula/infrastructure/optimizer"
@@ -29,6 +26,9 @@ import (
 	"github.com/agoXQ/QuantLab/app/formula/infrastructure/validator"
 	"github.com/agoXQ/QuantLab/app/formula/infrastructure/variable"
 	"github.com/agoXQ/QuantLab/app/formula/internal/config"
+	"github.com/agoXQ/QuantLab/app/market/domain/valueobject"
+	infraMarketAdj "github.com/agoXQ/QuantLab/app/market/infrastructure/adjustment"
+	infraMarketPg "github.com/agoXQ/QuantLab/app/market/infrastructure/postgres"
 )
 
 // ServiceContext is the composition root for the Formula Engine service.
@@ -36,15 +36,16 @@ type ServiceContext struct {
 	Config           config.Config
 	FormulaService   formula.Service
 	EvaluatorService formula.EvaluatorService
+	ScreenService    formula.ScreenService
 	// DataPort is the read-side adapter used by the evaluator. It is the
 	// RepositoryDataPort when MarketData.DSN is configured, otherwise the
 	// InMemory adapter used for tests.
-	DataPort         domainEval.DataPort
+	DataPort domainEval.DataPort
 	// InMemoryPort is exposed so tests and the local HTTP handler can
 	// seed fixtures without reaching for the data port interface.
-	InMemoryPort     *infraDataport.InMemory
-	DB               *sql.DB
-	Metrics          *infraMetrics.PrometheusCollector
+	InMemoryPort *infraDataport.InMemory
+	DB           *sql.DB
+	Metrics      *infraMetrics.PrometheusCollector
 }
 
 // NewServiceContext creates a new ServiceContext with all dependencies wired.
@@ -101,16 +102,36 @@ func NewServiceContext(c config.Config) *ServiceContext {
 	if port == nil {
 		port = inMemoryPort
 	}
+	evalSvc = wrapWithLatestDataVersion(c, evalSvc)
+	screenSvc := formula.NewScreenService(evalSvc, portAsSecuritySource(port), port)
 
 	return &ServiceContext{
 		Config:           c,
 		FormulaService:   svc,
 		EvaluatorService: evalSvc,
+		ScreenService:    screenSvc,
 		DataPort:         port,
 		InMemoryPort:     inMemoryPort,
 		DB:               db,
 		Metrics:          metrics,
 	}
+}
+
+func portAsSecuritySource(port domainEval.DataPort) formula.SecuritySource {
+	source, _ := port.(formula.SecuritySource)
+	return source
+}
+
+func wrapWithLatestDataVersion(c config.Config, evaluator formula.EvaluatorService) formula.EvaluatorService {
+	if c.MarketData.DSN == "" {
+		return evaluator
+	}
+	db, err := sql.Open("postgres", c.MarketData.DSN)
+	if err != nil {
+		fmt.Printf("warning: failed to open market data db for data version resolver: %v\n", err)
+		return evaluator
+	}
+	return formula.NewLatestVersionEvaluatorService(evaluator, infraMarketPg.NewDataVersionRepository(db))
 }
 
 func wrapWithMetrics(metrics *infraMetrics.PrometheusCollector, svc formula.Service) formula.Service {
@@ -165,7 +186,6 @@ func wrapWithCompileLog(c config.Config, svc formula.Service, dbOut **sql.DB) fo
 	return formula.NewLoggedService(svc, logRepo)
 }
 
-
 // buildRepositoryDataPort constructs the RepositoryDataPort when MarketData
 // configuration is present. Returning a nil port and nil error means the
 // caller should fall back to the in-memory adapter; a non-nil error signals
@@ -200,8 +220,10 @@ func buildRepositoryDataPort(c config.Config) (*infraDataport.RepositoryDataPort
 
 	port, err := infraDataport.NewRepository(infraDataport.RepositoryConfig{
 		Bars:       infraMarketPg.NewMarketBarRepository(db),
+		Securities: infraMarketPg.NewSecurityRepository(db),
 		Financials: infraMarketPg.NewFinancialRepository(db),
 		Factors:    infraMarketPg.NewFactorRepository(db),
+		Versions:   infraMarketPg.NewDataVersionRepository(db),
 		Adjuster:   infraMarketAdj.NewFactorAdjuster(),
 		Adjustment: adjustmentMode,
 	})

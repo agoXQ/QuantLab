@@ -23,8 +23,21 @@ func NewGetBacktestLogic(ctx context.Context, svcCtx *svc.ServiceContext) *GetBa
 	}
 }
 
+// GetBacktest returns the job aggregate and its config.
 func (l *GetBacktestLogic) GetBacktest(in *pb.GetBacktestRequest) (*pb.GetBacktestResponse, error) {
-	// todo: add your logic here and delete this line
-
-	return &pb.GetBacktestResponse{}, nil
+	job, err := l.svcCtx.BacktestSvc.Get(l.ctx, in.JobId)
+	if err != nil {
+		return nil, err
+	}
+	return &pb.GetBacktestResponse{
+		Job: jobToProto(job),
+		Config: &pb.BacktestConfig{
+			JobId:            job.ID,
+			CommissionRate:   job.Config.CommissionRate,
+			SlippageRate:     job.Config.SlippageRate,
+			TaxRate:          job.Config.StampDutyRate,
+			RebalancePeriod:  string(job.Config.RebalanceFrequency),
+			MaxPositionCount: int32(job.Config.MaxPositionCount),
+		},
+	}, nil
 }

@@ -1,6 +1,6 @@
 Name: backtest.rpc
-ListenOn: 0.0.0.0:8080
-HttpPort: 8082
+ListenOn: 0.0.0.0:8092
+HttpPort: 8093
 Etcd:
   Hosts:
   - 127.0.0.1:2379
@@ -39,6 +39,17 @@ MarketData:
 
 Formula:
   Mode: inprocess
+
+# Queue enables the in-process async backtest pipeline. When Enabled is
+# true, CreateBacktest enqueues the job and returns immediately; a pool
+# of workers drains the queue and runs each job with a timeout. This
+# keeps the gRPC Create call non-blocking so the frontend can poll
+# status instead of waiting on a synchronous run.
+Queue:
+  Enabled: true
+  Workers: 2
+  Buffer: 256
+  JobTimeoutSeconds: 120
 
 Engine:
   AnnualisationDays: 252
